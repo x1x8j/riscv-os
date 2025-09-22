@@ -1,0 +1,41 @@
+// 控制台层
+void cons_putc(char c) {
+    uart_putc(c);
+}
+
+void cons_puts(const char *s) {
+    for(; *s; s++)
+        cons_putc(*s);
+}
+
+// 清屏
+void clear_screen(void) {
+    cons_puts("\033[2J\033[H"); // ANSI 转义清屏 + 光标回左上
+}
+
+// 光标定位
+void goto_xy(int x, int y) {
+    char buf[32];
+    int n = 0;
+    buf[n++] = 0; // 临时占位
+    // ANSI 光标移动序列: \033[row;colH
+    buf[0] = 0x1B; // ESC
+    buf[1] = '[';
+    // 转行号 y+1
+    int temp = y + 1;
+    char tbuf[8]; int ti=0;
+    if(temp==0) tbuf[ti++]='0';
+    while(temp>0){ tbuf[ti++]=(temp%10)+'0'; temp/=10;}
+    for(int i=ti-1;i>=0;i--) buf[n++] = tbuf[i];
+    buf[n++] = ';';
+    // 转列号 x+1
+    temp = x+1; ti=0;
+    if(temp==0) tbuf[ti++]='0';
+    while(temp>0){ tbuf[ti++]=(temp%10)+'0'; temp/=10;}
+    for(int i=ti-1;i>=0;i--) buf[n++] = tbuf[i];
+    buf[n++]='H';
+    buf[n]=0;
+    cons_puts(buf);
+}
+
+
