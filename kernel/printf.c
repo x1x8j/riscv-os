@@ -5,15 +5,15 @@ void console_puts(const char *s);
 
 static char digits[] = "0123456789abcdef";
 
-static void print_number(long long num, int base, int sign) {
+static void print_number(int num, int base, int sign) {
     char buf[20];
     int i = 0;
-    unsigned long long x;
+    unsigned int x;
 
     if(sign && num < 0)
-        x = -(long long)num;  // INT_MIN 安全处理
+        x = (unsigned int)(-(long long)num); // INT_MIN 安全处理
     else
-        x = num;
+        x = (unsigned int)num;
 
     do {
         buf[i++] = digits[x % base];
