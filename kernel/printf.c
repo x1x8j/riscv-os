@@ -69,4 +69,37 @@ int printf(const char *fmt, ...) {
     return 0;
 }
 
-
+int sprintf(char *buf, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    char *p = buf;
+    for(int i=0; fmt[i]; i++){
+        if(fmt[i] != '%'){
+            *p++ = fmt[i];
+            continue;
+        }
+        i++;
+        char c = fmt[i];
+        switch(c){
+            case 'd': {
+                char tmp[20]; int len = 0;
+                long long num = va_arg(ap, int);
+                unsigned long long x = (num<0)?-(long long)num:num;
+                do { tmp[len++] = digits[x % 10]; x /= 10; } while(x);
+                if(num<0) tmp[len++] = '-';
+                while(len--) *p++ = tmp[len];
+                break;
+            }
+            case 's': {
+                char *s = va_arg(ap, char*);
+                if(!s) s = "(null)";
+                while(*s) *p++ = *s++;
+                break;
+            }
+            default: *p++ = '%'; *p++ = c; break;
+        }
+    }
+    *p = 0;
+    va_end(ap);
+    return p - buf;
+}
