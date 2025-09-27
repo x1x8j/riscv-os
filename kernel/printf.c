@@ -103,3 +103,10 @@ int sprintf(char *buf, const char *fmt, ...) {
     va_end(ap);
     return p - buf;
 }
+
+void panic(const char *s) 
+{ 
+	printf("panic: %s\n", s); 
+	for(;;); 
+}
+
