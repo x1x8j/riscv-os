@@ -53,7 +53,25 @@ int printf(const char *fmt, ...) {
                 // 未知 l? 就直接输出
                 console_putc('%'); console_putc('l'); break;
             case 'c': console_putc(va_arg(ap, int)); break;
-            case 's': {
+            case '*': { 
+    // 支持 %*s
+    int width = va_arg(ap, int);   // 从参数取宽度
+    i++; // 下一个字符
+    if(fmt[i] == 's'){
+        char *s = va_arg(ap, char*);
+        if(!s) s = "(null)";
+        int len = 0;
+        for(char *t=s; *t; t++) len++;
+        for(int j=0; j<width-len; j++) console_putc(' '); // 填充空格
+        for(; *s; s++) console_putc(*s);
+    } else {
+        // 如果不是 s，就直接输出 %*+字符
+        console_putc('%'); console_putc('*'); console_putc(fmt[i]);
+    }
+    break;
+}
+
+	    case 's': {
                 char *s = va_arg(ap, char*);
                 if(!s) s = "(null)";
                 for(; *s; s++) console_putc(*s);

@@ -38,19 +38,22 @@ int mappages(pagetable_t pagetable, uint64 va, uint64 pa, uint64 size, int perm)
   return 0;
 }
 
+#define pa2kva(pa) ((void *)((pa) + KERNBASE))
 
 void dump_pagetable(pagetable_t pagetable, int level) {
   for(int i = 0; i < 512; i++) {
     pte_t pte = pagetable[i];
     if(pte & PTE_V) {
-      printf("%*s[%d] pte=%p pa=%p\n", level*2, "",
+      printf("%*s[%d] pte=0x%lx pa=0x%lx\n", level*2, "",
              i, pte, PTE2PA(pte));
+      // 非叶子页，递归
       if((pte & (PTE_R|PTE_W|PTE_X)) == 0) {
-        dump_pagetable((pagetable_t)PTE2PA(pte), level+1);
+        dump_pagetable((pagetable_t)pa2kva(PTE2PA(pte)), level+1);
       }
     }
   }
 }
+
 
 // 内核页表
 pagetable_t kernel_pagetable;
@@ -111,8 +114,7 @@ void kvminit(void) {
            (uint64)etext - KERNBASE, PTE_R|PTE_X);
 
   // 内核数据段: R+W
-  mappages(kernel_pagetable, (uint64)etext, (uint64)etext,
-           PHYSTOP - (uint64)etext, PTE_R|PTE_W);
+  mappages(kernel_pagetable, KERNBASE + (uint64)etext, (uint64)etext, PHYSTOP - (uint64)etext, PTE_R|PTE_W);
 
   // 映射设备寄存器
   mappages(kernel_pagetable, UART0, UART0, PGSIZE, PTE_R|PTE_W);
