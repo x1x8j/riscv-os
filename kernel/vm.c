@@ -56,6 +56,52 @@ void dump_pagetable(pagetable_t pagetable, int level) {
 pagetable_t kernel_pagetable;
 extern char etext[];  // 链接脚本里定义，内核代码段结束位置
 
+// ------------------ 封装接口 ------------------
+
+// 创建一个新的空页表
+pagetable_t create_pagetable(void) {
+    pagetable_t pt = (pagetable_t)kalloc();
+    if(pt)
+        memset(pt, 0, PGSIZE);
+    return pt;
+}
+
+// 映射单页虚拟地址到物理地址
+int map_page(pagetable_t pt, uint64 va, uint64 pa, int perm) {
+    return mappages(pt, va, pa, PGSIZE, perm);
+}
+
+// 递归销毁页表
+void destroy_pagetable(pagetable_t pt) {
+    if(!pt) return;
+
+    for(int i = 0; i < 512; i++) {
+        pte_t pte = pt[i];
+        if(pte & PTE_V) {
+            // 如果是中间页表（无 R/W/X 权限），递归释放
+            if((pte & (PTE_R|PTE_W|PTE_X)) == 0) {
+                destroy_pagetable((pagetable_t)PTE2PA(pte));
+            } else {
+                // 物理页是数据页，也可以释放，如果你希望管理所有页
+                kfree((void*)PTE2PA(pte));
+            }
+        }
+    }
+    kfree(pt);
+}
+
+// walk_create 封装
+pte_t* walk_create(pagetable_t pt, uint64 va) {
+    return walk(pt, va, 1);
+}
+
+// walk_lookup 封装
+pte_t* walk_lookup(pagetable_t pt, uint64 va) {
+    return walk(pt, va, 0);
+}
+
+
+
 void kvminit(void) {
   kernel_pagetable = (pagetable_t)kalloc();
   memset(kernel_pagetable, 0, PGSIZE);
