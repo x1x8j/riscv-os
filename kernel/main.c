@@ -39,7 +39,7 @@ void test_pagetable(void) {
     uint64 pa = (uint64)kalloc();      // 分配物理页
     assert(pa != 0);
 
-    assert(mappages(pt, va, pa, PTE_R | PTE_W) == 0);
+    assert(mappages(pt, va, pa, PGSIZE, PTE_R | PTE_W) == 0);
 
     // 查找 PTE
     pte_t *pte = walk(pt, va, 0);
@@ -75,7 +75,7 @@ void test_virtual_memory(void) {
     // 测试设备访问：输出一个字符
     console_putc('X');
 
-    printf("\nVirtual memory test passed!\n");
+    printf("\nVirtual memory tes:t passed!\n");
 }
 
 // 主函数

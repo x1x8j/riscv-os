@@ -7,6 +7,7 @@ SECTIONS
     /* 代码段 */
     .text : ALIGN(16) {
         *(.text*)
+	etext = .;
     }
 
     /* 只读数据段靠近代码 */

@@ -14,7 +14,7 @@ typedef uint64 pte_t;
 
 void      kvminit(void);
 void      kvminithart(void);
-int       mappages(pagetable_t, uint64, uint64, int);
+int       mappages(pagetable_t, uint64, uint64, uint64, int);
 pte_t*    walk(pagetable_t, uint64, int);
 void      dump_pagetable(pagetable_t, int);
 
