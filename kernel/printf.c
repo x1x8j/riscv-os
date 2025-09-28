@@ -47,11 +47,23 @@ int printf(const char *fmt, ...) {
             case 'd': print_number(va_arg(ap, int), 10, 1); break;
             case 'u': print_number(va_arg(ap, unsigned int), 10, 0); break;
             case 'x': print_number(va_arg(ap, unsigned int), 16, 0); break;
-            case 'l': // 支持 %ld / %lx
-                if(fmt[i+1] == 'd') { print_number(va_arg(ap, long), 10, 1); i++; break; }
-                if(fmt[i+1] == 'x') { print_number(va_arg(ap, unsigned long), 16, 0); i++; break; }
-                // 未知 l? 就直接输出
-                console_putc('%'); console_putc('l'); break;
+            case 'l': // 支持 %lld / %llu
+    if(fmt[i+1] == 'l') {
+        if(fmt[i+2] == 'd') { 
+            print_number(va_arg(ap, long long), 10, 1); 
+            i += 2; 
+            break;
+        }
+        if(fmt[i+2] == 'u') { 
+            print_number(va_arg(ap, unsigned long long), 10, 0); 
+            i += 2; 
+            break;
+        }
+    }
+    // 处理错误情况
+    console_putc('%'); console_putc('l');
+    break;
+
             case 'c': console_putc(va_arg(ap, int)); break;
             case '*': { 
     // 支持 %*s
