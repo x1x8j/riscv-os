@@ -92,6 +92,7 @@ void main(void) {
 
     printf("All tests completed!\n");
 
-    while(1) { }
+    while(1);
+
 }
 
