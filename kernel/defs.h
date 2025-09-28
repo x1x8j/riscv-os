@@ -1,4 +1,8 @@
 #include"types.h"
+
+// console.c
+void            console_putc(int);
+
 // kalloc.c
 void   kinit(void);
 void*  kalloc(void);
