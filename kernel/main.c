@@ -23,6 +23,20 @@ void test_physical_memory(void) {
     kfree(p2);
     kfree(p3);
 
+    // --- 内存耗尽测试 ---
+    printf("Testing memory exhaustion...\n");
+    void *pages[100];  
+    int i;
+    for (i = 0; i < 10; i++) {
+        pages[i] = kalloc();
+        if (pages[i] == 0) {
+            break;  // 分配失败，说明内存已尽
+        }
+        // 可选：写入数据，确保页被真正使用
+        *(uint64*)pages[i] = 0xDEADBEEFCAFED00DULL;
+    }
+    printf("Allocated %d pages before exhaustion.\n", i);
+
     printf("Memory allocator test passed!\n");
 }
 
@@ -77,7 +91,7 @@ void test_pagetable(void) {
     uint64 test_pa = (uint64)kalloc();
     assert(test_pa != 0);
 
-    ret = mappages(pt, test_va, PGSIZE, test_pa, PTE_R | PTE_X);
+    ret = mappages(pt, test_va, test_pa,PGSIZE, PTE_R | PTE_X);
     assert(ret == 0);
     pte_t *pte_perm = walk(pt, test_va, 0);
     assert(pte_perm && (*pte_perm & PTE_V));

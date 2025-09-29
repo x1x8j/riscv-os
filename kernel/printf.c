@@ -36,68 +36,89 @@ static void printptr(unsigned long long x) {
 int printf(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    for(int i=0; fmt[i]; i++){
-        if(fmt[i] != '%'){
-            console_putc(fmt[i]);
+    for (int i = 0; fmt[i]; i++) {
+        if (fmt[i] != '%') {
+            console_putc(fmt[i]); // 非格式化字符直接输出
             continue;
         }
-        i++;
+        i++; // 跳过 '%'
         char c = fmt[i];
-        switch(c){
-            case 'd': print_number(va_arg(ap, int), 10, 1); break;
-            case 'u': print_number(va_arg(ap, unsigned int), 10, 0); break;
-            case 'x': print_number(va_arg(ap, unsigned int), 16, 0); break;
-            case 'l': // 支持 %lld / %llu
-    if(fmt[i+1] == 'l') {
-        if(fmt[i+2] == 'd') { 
-            print_number(va_arg(ap, long long), 10, 1); 
-            i += 2; 
-            break;
-        }
-        if(fmt[i+2] == 'u') { 
-            print_number(va_arg(ap, unsigned long long), 10, 0); 
-            i += 2; 
-            break;
-        }
-    }
-    // 处理错误情况
-    console_putc('%'); console_putc('l');
-    break;
 
-            case 'c': console_putc(va_arg(ap, int)); break;
+        switch (c) {
+            case 'd': 
+                print_number(va_arg(ap, int), 10, 1);
+                break;
+
+            case 'u': 
+                print_number(va_arg(ap, unsigned int), 10, 0);
+                break;
+
+            case 'x': 
+                print_number(va_arg(ap, unsigned int), 16, 0);
+                break;
+
+             case 'l': // 支持 %ld / %lx
+                if(fmt[i+1] == 'd') { print_number(va_arg(ap, long), 10, 1); i++; break; }
+                if(fmt[i+1] == 'x') { print_number(va_arg(ap, unsigned long), 16, 0); i++; break; }
+                // 未知 l? 就直接输出
+                console_putc('%'); console_putc('l'); break;
+
+            case 'c': 
+                console_putc(va_arg(ap, int)); // 打印字符
+                break;
+
             case '*': { 
-    // 支持 %*s
-    int width = va_arg(ap, int);   // 从参数取宽度
-    i++; // 下一个字符
-    if(fmt[i] == 's'){
-        char *s = va_arg(ap, char*);
-        if(!s) s = "(null)";
-        int len = 0;
-        for(char *t=s; *t; t++) len++;
-        for(int j=0; j<width-len; j++) console_putc(' '); // 填充空格
-        for(; *s; s++) console_putc(*s);
-    } else {
-        // 如果不是 s，就直接输出 %*+字符
-        console_putc('%'); console_putc('*'); console_putc(fmt[i]);
-    }
-    break;
-}
+                // 支持 %*s，指定宽度
+                int width = va_arg(ap, int);   // 获取宽度
+                i++; // 下一个字符是 's'
+                if (fmt[i] == 's') {
+                    char *s = va_arg(ap, char*);
+                    if (!s) s = "(null)";
+                    int len = 0;
+                    for (char *t = s; *t; t++) len++; // 计算字符串长度
 
-	    case 's': {
-                char *s = va_arg(ap, char*);
-                if(!s) s = "(null)";
-                for(; *s; s++) console_putc(*s);
+                    // 如果字符串长度小于指定宽度，填充空格
+                    for (int j = 0; j < width - len; j++) 
+                        console_putc(' ');
+
+                    // 打印字符串
+                    for (; *s; s++) 
+                        console_putc(*s);
+                } else {
+                    // 如果格式不符合，直接输出 %*字符
+                    console_putc('%');
+                    console_putc('*');
+                    console_putc(fmt[i]);
+                }
                 break;
             }
-            case 'p': printptr(va_arg(ap, unsigned long long)); break;
-            case '%': console_putc('%'); break;
+
+            case 's': {
+                char *s = va_arg(ap, char*);
+                if (!s) s = "(null)";
+                for (; *s; s++) 
+                    console_putc(*s);
+                break;
+            }
+
+            case 'p': 
+                printptr(va_arg(ap, unsigned long long)); 
+                break;
+
+            case '%': 
+                console_putc('%'); // 输出百分号
+                break;
+
             default:
-                console_putc('%'); console_putc(c); // 未知格式
+                console_putc('%'); 
+                console_putc(c); // 未知格式符
+                break;
         }
     }
     va_end(ap);
     return 0;
 }
+
 
 int sprintf(char *buf, const char *fmt, ...) {
     va_list ap;
