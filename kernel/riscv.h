@@ -18,6 +18,15 @@
 #define PXSHIFT(level)  (12 + (9 * (level)))
 #define PX(level, va)   ((((uint64) (va)) >> PXSHIFT(level)) & 0x1FF)
 
+// 在 riscv.h 的中断相关常量部分添加
+#define MSTATUS_MIE (1L << 3)  
+// 在 riscv.h 的中断相关常量部分添加
+#define MIE_MTIE (1L << 7)  // Machine Timer Interrupt Enable
+#define MSTATUS_MPP_MASK (3L << 11) // previous mode.
+#define MSTATUS_MPP_M (3L << 11)
+#define MSTATUS_MPP_S (1L << 11)
+#define MSTATUS_MPP_U (0L << 11)
+
 // 写 satp
 static inline void w_satp(uint64 x) {
   asm volatile("csrw satp, %0" : : "r"(x));
@@ -151,11 +160,14 @@ static inline uint64 r_stval(void) {
   return x;
 }
 
+
+
 static inline uint64 r_time(void) {
   uint64 x;
   asm volatile("csrr %0, time" : "=r" (x) );
   return x;
 }
+
 
 
 // 中断相关常量
@@ -246,7 +258,12 @@ w_stimecmp(uint64 x)
 {
   // asm volatile("csrw stimecmp, %0" : : "r" (x));
   asm volatile("csrw 0x14d, %0" : : "r" (x));
+  // 先写高32位，再写低32位
+  // 顺序很重要：先高后低，避免中间状态匹配
+//  asm volatile("csrw 0x14e, %0" : : "r" (x >> 32));  // stimecmp_hi
+//  asm volatile("csrw 0x14d, %0" : : "r" (x & 0xFFFFFFFF));  // stimecmp_lo
 }
+
 
 // Machine Environment Configuration Register
 static inline uint64
@@ -280,3 +297,58 @@ r_mcounteren()
   return x;
 }
 
+// 在 riscv.h 中添加（比如放在其他 CSR 函数附近）
+static inline uint64 r_mhartid(void) {
+  uint64 x;
+  asm volatile("csrr %0, mhartid" : "=r" (x));
+  return x;
+}
+
+
+// 在 riscv.h 中添加（放在其他 CSR 操作函数附近）
+static inline void w_mscratch(uint64 x) {
+  asm volatile("csrw mscratch, %0" : : "r" (x));
+}
+
+// 通常也需要对应的读函数，一起添加
+static inline uint64 r_mscratch(void) {
+  uint64 x;
+  asm volatile("csrr %0, mscratch" : "=r" (x));
+  return x;
+}
+
+
+static inline void
+w_mepc(uint64 x)
+{
+  asm volatile("csrw mepc, %0" : : "r" (x));
+}
+
+// Physical Memory Protection
+static inline void
+w_pmpcfg0(uint64 x)
+{
+  asm volatile("csrw pmpcfg0, %0" : : "r" (x));
+}
+
+static inline void
+w_pmpaddr0(uint64 x)
+{
+  asm volatile("csrw pmpaddr0, %0" : : "r" (x));
+}
+static inline void
+w_tp(uint64 x)
+{
+  asm volatile("mv tp, %0" : : "r" (x));
+}
+
+// sscratch register
+static inline void w_sscratch(uint64 x) {
+  asm volatile("csrw sscratch, %0" : : "r" (x));
+}
+
+static inline uint64 r_sscratch() {
+  uint64 x;
+  asm volatile("csrr %0, sscratch" : "=r" (x));
+  return x;
+}

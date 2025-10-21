@@ -1,79 +1,67 @@
+#include "types.h"
+#include "memlayout.h"
 #include "riscv.h"
 #include "defs.h"
-#include "assert.h"
-#include "memlayout.h"
 
-extern uint64 ticks;
-extern pagetable_t kernel_pagetable;
-extern char etext[]; 
-extern void kernelvec(void);
+// 全局变量用于中断计数（需在中断处理函数中访问）
+volatile int timer_interrupt_count = 0;
 
-   
-// 主函数
+// 声明测试函数
+void test_timer_interrupt(void);
+void trapinithart(void); 
 
-void main(void) {
-    printf("Kernel starting...\n");
-
-    // 初始化物理内存分配器
-//    kinit();
-    // 初始化中断处理
-    trap_init();
+void main() {
+    // 初始化陷阱处理（设置中断向量）
+    trapinithart();
     
-    printf("\n=== 中断功能测试 ===\n");
-    
-    // 检查中断状态
-    printf("SIE=0x%lx, SIP=0x%lx, SSTATUS=0x%lx\n", r_sie(), r_sip(), r_sstatus());
-    printf("STIE=%d, SIE=%d, Time=%lu\n", 
-           (r_sie() & SIE_STIE) ? 1 : 0,
-           (r_sstatus() & SSTATUS_SIE) ? 1 : 0,
-           get_time());
-    
-    // 在 main() 中，初始化后加：
-    printf("kernelvec = %p\n", kernelvec);
-    printf("stvec     = %p\n", r_stvec());
-    printf("SIE       = 0x%lx\n", r_sie());
-    printf("SSTATUS   = 0x%lx\n", r_sstatus());
-   
-    printf("=== Time Monitor: Checking if mtime increases ===\n");
-for (int i = 0; i < 10; i++) {
-  uint64 t = get_time();
-  printf("  t[%d] = %lu\n", i, t);
-  // 延迟一小会儿，让时间有机会增长
-  for (volatile int j = 0; j < 200000; j++) {}
-}
-printf("=== End of Time Monitor ===\n");
-
-    // 1. 测试时钟中断
+    // 启动中断测试
     test_timer_interrupt();
     
-    // 如果时钟中断不工作，尝试手动触发中断测试
-    if (ticks == 0) {
-        printf("Timer interrupts not working, trying manual interrupt test...\n");
-        
-        // 手动设置一个软件中断来测试中断处理机制
-        printf("Setting software interrupt...\n");
-        w_sip(r_sip() | SIP_SSIP);
-        printf("SIP after setting: 0x%lx\n", r_sip());
-        
-        // 等待一下看是否有中断
-        for (volatile int i = 0; i < 1000000; i++);
-        printf("After waiting, ticks: %lu\n", ticks);
-        
-        printf("Timer interrupts not working, skipping other tests\n");
-        printf("All tests completed!\n");
-        while(1);
+    // 测试完成后进入循环
+    printf("All tests completed. Entering idle loop.\n");
+    while (1) {
+        // 等待中断
+        w_sstatus(r_sstatus() | SSTATUS_SIE);  // 确保中断使能
+        asm volatile("wfi");  // 等待中断指令，降低CPU占用
     }
-    
-    // 2. 测试异常处理
-    test_exception_handling();
-    
-    // 3. 测试中断性能开销
-    test_interrupt_overhead();
-
-    printf("All tests completed!\n");
-
-    while(1);
-
 }
 
+void test_timer_interrupt(void) {
+    printf("Starting timer interrupt test...\n");
+
+    // 1. 开启 M 模式的全局中断
+//    w_mstatus(r_mstatus() | MSTATUS_MIE);
+
+    // 2. 委托 S 模式定时器中断到 S 模式
+//    w_mideleg(r_mideleg() | (1UL << 5));  // STIE
+
+    // 3. 开启 S 模式的定时器中断和全局中断
+    w_sie(r_sie() | SIE_STIE);
+    w_sstatus(r_sstatus() | SSTATUS_SIE);
+
+    // 4. 设置第一次定时器中断
+    uint64 now = r_time();
+    w_stimecmp(now + 1000000);  // 1M 周期后触发
+
+    // 5. 重置计数
+    timer_interrupt_count = 0;
+
+    // 6. 等待 5 次中断
+    printf("Waiting for 5 timer interrupts...\n");
+    while (timer_interrupt_count < 5) {
+        // 可以加点延时，但不要太多
+        for (volatile int i = 0; i < 1000; i++);
+    }
+
+    // 7. 记录时间
+    uint64 end_time = r_time();
+    uint64 total_cycles = end_time - now;
+    uint64 avg_cycles = total_cycles / 5;
+
+    printf("=== Timer interrupt test completed ===\n");
+    printf("Total interrupts: %d\n", timer_interrupt_count);
+    printf("Total cycles: %lu\n", total_cycles);
+    printf("Average interval: %lu cycles\n", avg_cycles);
+    printf("Expected: ~1000000 cycles\n");
+}
 

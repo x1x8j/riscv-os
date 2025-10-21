@@ -32,6 +32,8 @@ int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
 
 // trap.c
+extern uint     ticks;
+void            trapinithart(void);
 void            trap_init(void);
 void            kerneltrap(void);
 void            handle_exception(struct trapframe*);
