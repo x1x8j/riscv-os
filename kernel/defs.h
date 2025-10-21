@@ -30,3 +30,20 @@ char*           safestrcpy(char*, const char*, int);
 int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
+
+// trap.c
+void            trap_init(void);
+void            kerneltrap(void);
+void            handle_exception(struct trapframe*);
+
+// start.c
+void            start(void);
+uint64          get_time(void);
+void            timerinit(void);
+void            set_next_timer(void);
+void            test_timer_interrupt(void);
+
+// trap.c
+void            clockintr(void);
+void            test_exception_handling(void);
+void            test_interrupt_overhead(void);

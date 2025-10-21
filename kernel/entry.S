@@ -11,9 +11,10 @@ _start:
 //    li t1, 'P'              # 字符P表示栈已设置
     sb t1, 0(t0)
 
-    # 跳转到C主函数
-    call main
-
+//    # 跳转到C主函数
+//    call main
+    # 跳转到start函数进行机器模式初始化
+    call start
 spin:
     j spin                  # 死循环
 

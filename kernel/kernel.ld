@@ -1,5 +1,4 @@
 ENTRY(_start)
-
 SECTIONS
 {
     . = 0x80000000;         /* 内核加载起始地址 */

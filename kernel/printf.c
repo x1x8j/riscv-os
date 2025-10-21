@@ -27,6 +27,29 @@ static void print_number(int num, int base, int sign) {
         console_putc(buf[i]);
 }
 
+
+static void print_number64(long long num, int base, int sign) {
+    char buf[32];
+    int i = 0;
+    unsigned long long x;
+
+    if(sign && num < 0)
+        x = (unsigned long long)(-num);
+    else
+        x = (unsigned long long)num;
+
+    do {
+        buf[i++] = digits[x % base];
+        x /= base;
+    } while(x != 0);
+
+    if(sign && num < 0)
+        buf[i++] = '-';
+
+    while(--i >= 0)
+        console_putc(buf[i]);
+}
+
 static void printptr(unsigned long long x) {
     console_puts("0x");
     for(int i = (sizeof(x)*2 - 1); i >= 0; i--)
@@ -57,9 +80,10 @@ int printf(const char *fmt, ...) {
                 print_number(va_arg(ap, unsigned int), 16, 0);
                 break;
 
-             case 'l': // 支持 %ld / %lx
-                if(fmt[i+1] == 'd') { print_number(va_arg(ap, long), 10, 1); i++; break; }
-                if(fmt[i+1] == 'x') { print_number(va_arg(ap, unsigned long), 16, 0); i++; break; }
+             case 'l': // 支持 %ld / %lx / %lu
+                if(fmt[i+1] == 'd') { print_number64(va_arg(ap, long), 10, 1); i++; break; }
+                if(fmt[i+1] == 'x') { print_number64(va_arg(ap, unsigned long), 16, 0); i++; break; }
+                if(fmt[i+1] == 'u') { print_number64(va_arg(ap, unsigned long), 10, 0); i++; break; }
                 // 未知 l? 就直接输出
                 console_putc('%'); console_putc('l'); break;
 
