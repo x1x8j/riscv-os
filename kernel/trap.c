@@ -4,7 +4,6 @@
 #include "defs.h"
 
 extern volatile int timer_interrupt_count;  // 在 trap.c 中引用 main.c 中定义的 interrupt_count
-extern volatile int timer_done;
 uint ticks;
 
 //extern char trampoline[], uservec[];
@@ -27,7 +26,127 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
-//
+
+void handle_floating_point_exception() {
+    panic("Floating-point exception");
+}
+
+void handle_illegal_instruction() {
+    panic("Illegal instruction");
+}
+
+void handle_instruction_address_misalignment() {
+    panic("Instruction address misaligned");
+}
+
+void handle_instruction_access_fault() {
+    panic("Instruction access fault");
+}
+
+
+
+void handle_breakpoint() {
+    panic("Breakpoint");
+}
+
+void handle_load_address_misalignment() {
+    panic("Load address misaligned");
+}
+
+void handle_load_access_fault() {
+    panic("Load access fault");
+}
+
+void handle_store_address_misalignment() {
+    panic("Store address misaligned");
+}
+
+void handle_store_access_fault() {
+    panic("Store access fault");
+}
+
+void handle_user_ecall() {
+    panic("User environment call");
+}
+
+void handle_supervisor_ecall() {
+    panic("Supervisor environment call");
+}
+
+void handle_timer_interrupt() {
+    panic("Timer interrupt");
+}
+
+void handle_external_interrupt() {
+    panic("External interrupt");
+}
+
+void handle_load_page_fault() {
+    panic("Load page fault");
+}
+
+void handle_store_page_fault() {
+    panic("Store page fault");
+}
+
+void handle_exception() {
+    uint64 cause = r_scause();  // 获取异常的原因
+
+    switch (cause) {
+        case 0:  // 浮点异常 (Floating-point exception)
+            handle_floating_point_exception();  // 处理浮点异常
+            break;
+        case 1:  // 非法指令 (Illegal instruction)
+            handle_illegal_instruction();  // 处理非法指令
+            break;
+        case 2:  // 指令地址未对齐 (Instruction address misaligned)
+            handle_instruction_address_misalignment();  // 处理指令地址未对齐
+            break;
+        case 3:  // 指令访问故障 (Instruction access fault)
+            handle_instruction_access_fault();  // 处理指令访问故障
+            break;
+        case 4:  // 断点 (Breakpoint)
+            handle_breakpoint();  // 处理断点
+            break;
+        case 5:  // 加载地址未对齐 (Load address misaligned)
+            handle_load_address_misalignment();  // 处理加载地址未对齐
+            break;
+        case 6:  // 加载访问故障 (Load access fault)
+            handle_load_access_fault();  // 处理加载访问故障
+            break;
+        case 7:  // 存储地址未对齐 (Store address misaligned)
+            handle_store_address_misalignment();  // 处理存储地址未对齐
+            break;
+        case 8:  // 存储访问故障 (Store access fault)
+            handle_store_access_fault();  // 处理存储访问故障
+            break;
+        case 9:  // 用户模式环境调用 (User environment call)
+            handle_user_ecall();  // 处理用户模式环境调用
+            break;
+        case 10: // 监督模式环境调用 (Supervisor environment call)
+            handle_supervisor_ecall();  // 处理监督模式环境调用
+            break;
+        case 11: // 计时器中断 (Timer interrupt)
+            handle_timer_interrupt();  // 处理计时器中断
+            break;
+        case 12: // 外部中断 (External interrupt)
+            handle_external_interrupt();  // 处理外部中断
+            break;
+        case 13: // 加载页故障 (Load page fault)
+            handle_load_page_fault();  // 处理加载页故障
+            break;
+        case 14: // 存储页故障 (Store page fault)
+            handle_store_page_fault();  // 处理存储页故障
+            break;
+        case 15: // 存储页故障 (Store page fault)
+            handle_store_page_fault();  // 处理存储页故障
+            break;
+        default:
+            printf("Unknown exception: scause=0x%lx\n", cause);
+            panic("Unknown exception");
+    }
+}
+
 // handle an interrupt, exception, or system call from user space.
 // called from, and returns to, trampoline.S
 // return value is user satp for trampoline.S to switch to.
@@ -147,7 +266,8 @@ kerneltrap()
   if((which_dev = devintr()) == 0){
     // interrupt or trap from an unknown source
     printf("scause=0x%lx sepc=0x%lx stval=0x%lx\n", scause, r_sepc(), r_stval());
-    panic("kerneltrap");
+    handle_exception();
+    //panic("kerneltrap");
     
   }
 
@@ -174,7 +294,6 @@ clockintr()
   timer_interrupt_count++;
 
   printf("Tick %d\n", timer_interrupt_count);
- // timer_interrupt_count++;
     // 假设希望10次中断后停止
   if (timer_interrupt_count>= 10) {
     // 关闭时钟中断
@@ -182,7 +301,6 @@ clockintr()
     printf("Timer interrupt stopped after %d ticks\n", timer_interrupt_count);
     return;
   }
-  //printf("=========");
   // ask for the next timer interrupt. this also clears
   // the interrupt request. 1000000 is about a tenth
   // of a second.

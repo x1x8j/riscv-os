@@ -16,7 +16,10 @@ void main() {
     
     // 启动中断测试
     test_timer_interrupt();
-    
+
+    // 启动异常测试
+    test_exception_handling(); 
+
     // 测试完成后进入循环
     printf("All tests completed. Entering idle loop.\n");
     while (1) {
@@ -62,3 +65,16 @@ void test_timer_interrupt(void) {
     printf("Expected: ~1000000 cycles\n");
 }
 
+void test_exception_handling(void) {
+    printf("Testing exception handling...\n");
+
+    printf("Testing memory access fault...\n");
+    int *p = (int *)0xFFFFFFFF;  // 访问非法内存地址
+    *p = 42;  // 这将触发内存访问故障
+
+    printf("Testing illegal instruction...\n");
+    volatile char *invalid_instruction = (volatile char *)0x1000000000;  
+    *invalid_instruction = 0;  // 访问无效地址，触发非法内存访问，模拟非法指令异常
+
+    printf("Exception tests completed\n");
+}

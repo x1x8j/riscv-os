@@ -36,7 +36,9 @@ extern uint     ticks;
 void            trapinithart(void);
 void            trap_init(void);
 void            kerneltrap(void);
-void            handle_exception(struct trapframe*);
+void            handle_exception(void);
+void            test_illegal_instruction(void);  
+void            test_memory_access_fault(void);  
 
 // start.c
 void            start(void);
