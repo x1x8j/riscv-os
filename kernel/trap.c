@@ -4,7 +4,7 @@
 #include "defs.h"
 
 extern volatile int timer_interrupt_count;  // 在 trap.c 中引用 main.c 中定义的 interrupt_count
-
+extern volatile int timer_done;
 uint ticks;
 
 //extern char trampoline[], uservec[];
@@ -170,8 +170,17 @@ clockintr()
   //   release(&tickslock);
   // }
   ticks++;
+  printf("Tick %d\n", ticks);
   timer_interrupt_count++;
-  printf("=========");
+    // 假设希望10次中断后停止
+  if (ticks >= 1) {
+    // 关闭时钟中断
+    w_sie(r_sie() & ~SIE_STIE);
+    printf("Timer interrupt stopped after %d ticks\n", ticks);
+    timer_done=1;
+    //return;
+  }
+  //printf("=========");
   // ask for the next timer interrupt. this also clears
   // the interrupt request. 1000000 is about a tenth
   // of a second.

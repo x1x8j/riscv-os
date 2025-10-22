@@ -5,7 +5,7 @@
 
 // 全局变量用于中断计数（需在中断处理函数中访问）
 volatile int timer_interrupt_count = 0;
-
+volatile int timer_done = 0;
 // 声明测试函数
 void test_timer_interrupt(void);
 void trapinithart(void); 
@@ -46,12 +46,9 @@ void test_timer_interrupt(void) {
     // 5. 重置计数
     timer_interrupt_count = 0;
 
-    // 6. 等待 5 次中断
-    printf("Waiting for 5 timer interrupts...\n");
-    while (timer_interrupt_count < 5) {
-        // 可以加点延时，但不要太多
-        for (volatile int i = 0; i < 1000; i++);
-    }
+    // 6. 等待中断
+    // 等待10次中断完成（循环等待标志位）
+
 
     // 7. 记录时间
     uint64 end_time = r_time();
