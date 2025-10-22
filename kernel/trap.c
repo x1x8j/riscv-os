@@ -173,12 +173,11 @@ clockintr()
   printf("Tick %d\n", ticks);
   timer_interrupt_count++;
     // 假设希望10次中断后停止
-  if (ticks >= 1) {
+  if (ticks >= 10) {
     // 关闭时钟中断
     w_sie(r_sie() & ~SIE_STIE);
     printf("Timer interrupt stopped after %d ticks\n", ticks);
-    timer_done=1;
-    //return;
+    return;
   }
   //printf("=========");
   // ask for the next timer interrupt. this also clears

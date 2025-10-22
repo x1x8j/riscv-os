@@ -5,7 +5,7 @@
 
 // 全局变量用于中断计数（需在中断处理函数中访问）
 volatile int timer_interrupt_count = 0;
-volatile int timer_done = 0;
+//volatile int timer_done = 0;
 // 声明测试函数
 void test_timer_interrupt(void);
 void trapinithart(void); 
@@ -48,12 +48,12 @@ void test_timer_interrupt(void) {
 
     // 6. 等待中断
     // 等待10次中断完成（循环等待标志位）
-
+    while(timer_interrupt_count<1);
 
     // 7. 记录时间
     uint64 end_time = r_time();
     uint64 total_cycles = end_time - now;
-    uint64 avg_cycles = total_cycles / 5;
+    uint64 avg_cycles = total_cycles ;
 
     printf("=== Timer interrupt test completed ===\n");
     printf("Total interrupts: %d\n", timer_interrupt_count);
