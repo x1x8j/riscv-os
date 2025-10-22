@@ -52,6 +52,10 @@ kernelvec:
     # 恢复栈指针
     addi sp, sp, 256          # 恢复栈指针
 
+    # 恢复 sp
+    csrw sscratch, sp
+    csrr sp, sscratch
+
     # 恢复到用户模式
     sret                      # 执行 sret 返回到用户模式
 
