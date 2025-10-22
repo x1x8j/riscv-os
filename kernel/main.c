@@ -48,12 +48,12 @@ void test_timer_interrupt(void) {
 
     // 6. 等待中断
     // 等待10次中断完成（循环等待标志位）
-    while(timer_interrupt_count<1);
+    while(timer_interrupt_count<10);
 
     // 7. 记录时间
     uint64 end_time = r_time();
     uint64 total_cycles = end_time - now;
-    uint64 avg_cycles = total_cycles ;
+    uint64 avg_cycles = total_cycles/10;
 
     printf("=== Timer interrupt test completed ===\n");
     printf("Total interrupts: %d\n", timer_interrupt_count);

@@ -148,6 +148,7 @@ kerneltrap()
     // interrupt or trap from an unknown source
     printf("scause=0x%lx sepc=0x%lx stval=0x%lx\n", scause, r_sepc(), r_stval());
     panic("kerneltrap");
+    
   }
 
   // give up the CPU if this is a timer interrupt.
@@ -170,13 +171,15 @@ clockintr()
   //   release(&tickslock);
   // }
   ticks++;
-  printf("Tick %d\n", ticks);
   timer_interrupt_count++;
+
+  printf("Tick %d\n", timer_interrupt_count);
+ // timer_interrupt_count++;
     // 假设希望10次中断后停止
-  if (ticks >= 10) {
+  if (timer_interrupt_count>= 10) {
     // 关闭时钟中断
     w_sie(r_sie() & ~SIE_STIE);
-    printf("Timer interrupt stopped after %d ticks\n", ticks);
+    printf("Timer interrupt stopped after %d ticks\n", timer_interrupt_count);
     return;
   }
   //printf("=========");
@@ -226,4 +229,5 @@ devintr()
     return 0;
   }
 }
+
 
