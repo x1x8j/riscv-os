@@ -10,14 +10,14 @@ void kernelvec();
 
 extern int devintr();
 
-
+// 设置 stvec 寄存器，指向 kernelvec 函数，以便处理中断
 void
 trapinithart(void)
 {
   w_stvec((uint64)kernelvec);
 }
 
-
+// 以下是各类异常处理函数，每个异常触发时都会调用对应的函数进行处理
 void handle_floating_point_exception() {
     panic("Floating-point exception");
 }
@@ -33,8 +33,6 @@ void handle_instruction_address_misalignment() {
 void handle_instruction_access_fault() {
     panic("Instruction access fault");
 }
-
-
 
 void handle_breakpoint() {
     panic("Breakpoint");
@@ -80,6 +78,7 @@ void handle_store_page_fault() {
     panic("Store page fault");
 }
 
+// 处理异常的主函数，根据异常的 cause（原因）来判断处理哪个异常
 void handle_exception() {
     uint64 cause = r_scause();  // 获取异常的原因
 
@@ -138,32 +137,34 @@ void handle_exception() {
     }
 }
 
-
+// kerneltrap 是系统调用和中断的主要处理函数
 void 
 kerneltrap()
 {
  // printf("[TRAP] Entering kerneltrap!\n");
   int which_dev = 0;
-  uint64 sepc = r_sepc();
-  uint64 sstatus = r_sstatus();
-  uint64 scause = r_scause();
-  
+  uint64 sepc = r_sepc(); // 获取异常发生时的程序计数器（sepc）
+  uint64 sstatus = r_sstatus(); // 获取状态寄存器（sstatus）
+  uint64 scause = r_scause(); // 获取异常原因（scause）
+
+  // 检查当前是否处于 S模式（超级用户模式）
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
+  // 检查中断是否已启用
   if(intr_get() != 0)
     panic("kerneltrap: interrupts enabled");
-
+  // 调用 devintr() 函数来处理设备中断，返回值为中断类型
   if((which_dev = devintr()) == 0){
     // interrupt or trap from an unknown source
     printf("scause=0x%lx sepc=0x%lx stval=0x%lx\n", scause, r_sepc(), r_stval());
     handle_exception();
     //panic("kerneltrap");
-    
   }
 
   // if(which_dev == 2 && myproc() != 0)
   //   yield();
-
+  
+  // 恢复 sepc 和 sstatus 寄存器的值，准备返回
   w_sepc(sepc);
   w_sstatus(sstatus);
 }
@@ -182,7 +183,7 @@ clockintr()
     printf("Timer interrupt stopped after %d ticks\n", timer_interrupt_count);
     return;
   }
-
+  // 设置定时器比较寄存器，使得下次定时器中断将在 1 秒后触发
   w_stimecmp(r_time() + 1000000);
 }
 
@@ -193,33 +194,15 @@ devintr()
   uint64 scause = r_scause();
 
    if(scause == 0x8000000000000009L){
-  //   // this is a supervisor external interrupt, via PLIC.
-
-  //   // irq indicates which device interrupted.
-  //   int irq = plic_claim();
-
-  //   if(irq == UART0_IRQ){
-  //     uartintr();
-  //   } else if(irq == VIRTIO0_IRQ){
-  //     virtio_disk_intr();
-  //   } else if(irq){
-  //     printf("unexpected interrupt irq=%d\n", irq);
-  //   }
-
-  //   // the PLIC allows each device to raise at most one
-  //   // interrupt at a time; tell the PLIC the device is
-  //   // now allowed to interrupt again.
-  //   if(irq)
-  //     plic_complete(irq);
-
+     // 如果是外部中断（来自设备），处理外部中断
      return 1;
    } else 
   if(scause == 0x8000000000000005L){
-    // timer interrupt.
+    // 定时器中断
     clockintr();
-    return 2;
+    return 2; // 定时器中断已处理
   } else {
-    return 0;
+    return 0; // 未知中断
   }
 }
 
