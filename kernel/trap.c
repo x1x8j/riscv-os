@@ -193,8 +193,21 @@ devintr()
 {
   uint64 scause = r_scause();
 
-   if(scause == 0x8000000000000009L){
+  if(scause == 0x8000000000000009L){
      // 如果是外部中断（来自设备），处理外部中断
+     // 向PLIC请求获取当前最高优先级的中断设备ID
+    int irq = plic_claim();
+
+    if(irq == UART0_IRQ){ //串口
+      uartintr();
+    } else if(irq == VIRTIO0_IRQ){ //磁盘
+      virtio_disk_intr();
+    } else if(irq){ //其他未知设备
+      printf("unexpected interrupt irq=%d\n", irq);
+    }
+    if(irq)
+      plic_complete(irq); // 通知PLIC：该设备的中断已处理完成
+     
      return 1;
    } else 
   if(scause == 0x8000000000000005L){
