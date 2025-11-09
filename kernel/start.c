@@ -1,4 +1,5 @@
 #include "types.h"
+#include "param.h"
 #include "memlayout.h"
 #include "riscv.h"
 #include "defs.h"
@@ -7,7 +8,7 @@ void main();
 void timerinit();
 
 // entry.S needs one stack per CPU.
-__attribute__ ((aligned (16))) char stack0[4096];
+__attribute__ ((aligned (16))) char stack0[4096*NCPU];
 
 // entry.S jumps here in machine mode on stack0.
 void
@@ -18,12 +19,6 @@ start()
   x &= ~MSTATUS_MPP_MASK;
   x |= MSTATUS_MPP_S;
   w_mstatus(x);
-
-  // 设置栈指针
-  //__asm__ volatile("mv sp, %0" : : "r"(stack0 + 4096));
-
-  // 关键：设置 sscratch 指向内核栈顶
-  // w_sscratch((uint64)(stack0 + 4096));
 
   // set M Exception Program Counter to main, for mret.
   // requires gcc -mcmodel=medany
@@ -46,14 +41,9 @@ start()
   timerinit();
 
   // keep each CPU's hartid in its tp register, for cpuid().
-  int id = 0;
+  int id = r_mhartid();
   w_tp(id);
 
-  __asm__ volatile("csrr %0, mhartid" : "=r"(id));
-  uint64 stack_top = (uint64)(stack0 + (id + 1) * 4096);
-  w_sscratch(stack_top);
-
-  
   // switch to supervisor mode and jump to main().
   asm volatile("mret");
 }

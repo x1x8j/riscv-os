@@ -1,187 +1,151 @@
+//
+// formatted console output -- printf, panic.
+//
+
 #include <stdarg.h>
 
-void console_putc(char c);
-void console_puts(const char *s);
+#include "types.h"
+#include "param.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+#include "memlayout.h"
+#include "riscv.h"
+#include "defs.h"
+#include "proc.h"
+
+volatile int panicking = 0; // printing a panic message
+volatile int panicked = 0; // spinning forever at end of a panic
+
+// lock to avoid interleaving concurrent printf's.
+static struct {
+  struct spinlock lock;
+} pr;
 
 static char digits[] = "0123456789abcdef";
 
-static void print_number(int num, int base, int sign) {
-    char buf[20];
-    int i = 0;
-    unsigned int x;
+static void
+printint(long long xx, int base, int sign)
+{
+  char buf[20];
+  int i;
+  unsigned long long x;
 
-    if(sign && num < 0)
-        x = (unsigned int)(-(long long)num); // INT_MIN 安全处理
-    else
-        x = (unsigned int)num;
+  if(sign && (sign = (xx < 0)))
+    x = -xx;
+  else
+    x = xx;
 
-    do {
-        buf[i++] = digits[x % base];
-        x /= base;
-    } while(x != 0);
+  i = 0;
+  do {
+    buf[i++] = digits[x % base];
+  } while((x /= base) != 0);
 
-    if(sign && num < 0)
-        buf[i++] = '-';
+  if(sign)
+    buf[i++] = '-';
 
-    while(--i >= 0)
-        console_putc(buf[i]);
+  while(--i >= 0)
+    consputc(buf[i]);
 }
 
-
-static void print_number64(long long num, int base, int sign) {
-    char buf[32];
-    int i = 0;
-    unsigned long long x;
-
-    if(sign && num < 0)
-        x = (unsigned long long)(-num);
-    else
-        x = (unsigned long long)num;
-
-    do {
-        buf[i++] = digits[x % base];
-        x /= base;
-    } while(x != 0);
-
-    if(sign && num < 0)
-        buf[i++] = '-';
-
-    while(--i >= 0)
-        console_putc(buf[i]);
+static void
+printptr(uint64 x)
+{
+  int i;
+  consputc('0');
+  consputc('x');
+  for (i = 0; i < (sizeof(uint64) * 2); i++, x <<= 4)
+    consputc(digits[x >> (sizeof(uint64) * 8 - 4)]);
 }
 
-static void printptr(unsigned long long x) {
-    console_puts("0x");
-    for(int i = (sizeof(x)*2 - 1); i >= 0; i--)
-        console_putc(digits[(x >> (i*4)) & 0xf]);
-}
+// Print to the console.
+int
+printf(char *fmt, ...)
+{
+  va_list ap;
+  int i, cx, c0, c1, c2;
+  char *s;
 
-int printf(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    for (int i = 0; fmt[i]; i++) {
-        if (fmt[i] != '%') {
-            console_putc(fmt[i]); // 非格式化字符直接输出
-            continue;
-        }
-        i++; // 跳过 '%'
-        char c = fmt[i];
+  if(panicking == 0)
+    acquire(&pr.lock);
 
-        switch (c) {
-            case 'd': 
-                print_number(va_arg(ap, int), 10, 1);
-                break;
-
-            case 'u': 
-                print_number(va_arg(ap, unsigned int), 10, 0);
-                break;
-
-            case 'x': 
-                print_number(va_arg(ap, unsigned int), 16, 0);
-                break;
-
-             case 'l': // 支持 %ld / %lx / %lu
-                if(fmt[i+1] == 'd') { print_number64(va_arg(ap, long), 10, 1); i++; break; }
-                if(fmt[i+1] == 'x') { print_number64(va_arg(ap, unsigned long), 16, 0); i++; break; }
-                if(fmt[i+1] == 'u') { print_number64(va_arg(ap, unsigned long), 10, 0); i++; break; }
-                // 未知 l? 就直接输出
-                console_putc('%'); console_putc('l'); break;
-
-            case 'c': 
-                console_putc(va_arg(ap, int)); // 打印字符
-                break;
-
-            case '*': { 
-                // 支持 %*s，指定宽度
-                int width = va_arg(ap, int);   // 获取宽度
-                i++; // 下一个字符是 's'
-                if (fmt[i] == 's') {
-                    char *s = va_arg(ap, char*);
-                    if (!s) s = "(null)";
-                    int len = 0;
-                    for (char *t = s; *t; t++) len++; // 计算字符串长度
-
-                    // 如果字符串长度小于指定宽度，填充空格
-                    for (int j = 0; j < width - len; j++) 
-                        console_putc(' ');
-
-                    // 打印字符串
-                    for (; *s; s++) 
-                        console_putc(*s);
-                } else {
-                    // 如果格式不符合，直接输出 %*字符
-                    console_putc('%');
-                    console_putc('*');
-                    console_putc(fmt[i]);
-                }
-                break;
-            }
-
-            case 's': {
-                char *s = va_arg(ap, char*);
-                if (!s) s = "(null)";
-                for (; *s; s++) 
-                    console_putc(*s);
-                break;
-            }
-
-            case 'p': 
-                printptr(va_arg(ap, unsigned long long)); 
-                break;
-
-            case '%': 
-                console_putc('%'); // 输出百分号
-                break;
-
-            default:
-                console_putc('%'); 
-                console_putc(c); // 未知格式符
-                break;
-        }
+  va_start(ap, fmt);
+  for(i = 0; (cx = fmt[i] & 0xff) != 0; i++){
+    if(cx != '%'){
+      consputc(cx);
+      continue;
     }
-    va_end(ap);
-    return 0;
-}
-
-
-int sprintf(char *buf, const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    char *p = buf;
-    for(int i=0; fmt[i]; i++){
-        if(fmt[i] != '%'){
-            *p++ = fmt[i];
-            continue;
-        }
-        i++;
-        char c = fmt[i];
-        switch(c){
-            case 'd': {
-                char tmp[20]; int len = 0;
-                long long num = va_arg(ap, int);
-                unsigned long long x = (num<0)?-(long long)num:num;
-                do { tmp[len++] = digits[x % 10]; x /= 10; } while(x);
-                if(num<0) tmp[len++] = '-';
-                while(len--) *p++ = tmp[len];
-                break;
-            }
-            case 's': {
-                char *s = va_arg(ap, char*);
-                if(!s) s = "(null)";
-                while(*s) *p++ = *s++;
-                break;
-            }
-            default: *p++ = '%'; *p++ = c; break;
-        }
+    i++;
+    c0 = fmt[i+0] & 0xff;
+    c1 = c2 = 0;
+    if(c0) c1 = fmt[i+1] & 0xff;
+    if(c1) c2 = fmt[i+2] & 0xff;
+    if(c0 == 'd'){
+      printint(va_arg(ap, int), 10, 1);
+    } else if(c0 == 'l' && c1 == 'd'){
+      printint(va_arg(ap, uint64), 10, 1);
+      i += 1;
+    } else if(c0 == 'l' && c1 == 'l' && c2 == 'd'){
+      printint(va_arg(ap, uint64), 10, 1);
+      i += 2;
+    } else if(c0 == 'u'){
+      printint(va_arg(ap, uint32), 10, 0);
+    } else if(c0 == 'l' && c1 == 'u'){
+      printint(va_arg(ap, uint64), 10, 0);
+      i += 1;
+    } else if(c0 == 'l' && c1 == 'l' && c2 == 'u'){
+      printint(va_arg(ap, uint64), 10, 0);
+      i += 2;
+    } else if(c0 == 'x'){
+      printint(va_arg(ap, uint32), 16, 0);
+    } else if(c0 == 'l' && c1 == 'x'){
+      printint(va_arg(ap, uint64), 16, 0);
+      i += 1;
+    } else if(c0 == 'l' && c1 == 'l' && c2 == 'x'){
+      printint(va_arg(ap, uint64), 16, 0);
+      i += 2;
+    } else if(c0 == 'p'){
+      printptr(va_arg(ap, uint64));
+    } else if(c0 == 'c'){
+      consputc(va_arg(ap, uint));
+    } else if(c0 == 's'){
+      if((s = va_arg(ap, char*)) == 0)
+        s = "(null)";
+      for(; *s; s++)
+        consputc(*s);
+    } else if(c0 == '%'){
+      consputc('%');
+    } else if(c0 == 0){
+      break;
+    } else {
+      // Print unknown % sequence to draw attention.
+      consputc('%');
+      consputc(c0);
     }
-    *p = 0;
-    va_end(ap);
-    return p - buf;
+
+  }
+  va_end(ap);
+
+  if(panicking == 0)
+    release(&pr.lock);
+
+  return 0;
 }
 
-void panic(const char *s) 
-{ 
-	printf("panic: %s\n", s); 
-	for(;;); 
+void
+panic(char *s)
+{
+  panicking = 1;
+  printf("panic: ");
+  printf("%s\n", s);
+  panicked = 1; // freeze uart output from other CPUs
+  for(;;)
+    ;
 }
 
+void
+printfinit(void)
+{
+  initlock(&pr.lock, "pr");
+}

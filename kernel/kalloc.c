@@ -1,48 +1,82 @@
+// Physical memory allocator, for user processes,
+// kernel stacks, page-table pages,
+// and pipe buffers. Allocates whole 4096-byte pages.
+
+#include "types.h"
+#include "param.h"
+#include "memlayout.h"
+#include "spinlock.h"
 #include "riscv.h"
 #include "defs.h"
-#include "types.h"
-#include "memlayout.h"
 
-extern char end[];   // 由 kernel.ld 提供，内核末尾地址
+void freerange(void *pa_start, void *pa_end);
 
+extern char end[]; // first address after kernel.
+                   // defined by kernel.ld.
 
-// 空闲页链表节点
 struct run {
-    struct run *next;
+  struct run *next;
 };
 
-// freelist 头指针
-static struct run *freelist;
+struct {
+  struct spinlock lock;
+  struct run *freelist;
+} kmem;
 
-// kfree: 将一页放回 freelist
-void kfree(void *pa) {
-    if (((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
-        panic("kfree: invalid pa");
-
-    // 填充垃圾数据，帮助捕捉 bug
-    memset(pa, 1, PGSIZE);
-
-    struct run *r = (struct run*)pa;
-    r->next = freelist;
-    freelist = r;
+void
+kinit()
+{
+  initlock(&kmem.lock, "kmem");
+  freerange(end, (void*)PHYSTOP);
 }
 
-// kalloc: 分配一页
-void* kalloc(void) {
-    struct run *r = freelist;
-    if (r) {
-        freelist = r->next;
-        memset((char*)r, 5, PGSIZE); // 填充垃圾数据
-        return (void*)r;
-    }
-    return 0;
+void
+freerange(void *pa_start, void *pa_end)
+{
+  char *p;
+  p = (char*)PGROUNDUP((uint64)pa_start);
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+    kfree(p);
 }
 
-// 初始化物理内存分配器
-void kinit(void) {
-    char *p = (char*)PGROUNDUP((uint64)end);
-    for (; p + PGSIZE <= (char*)PHYSTOP; p += PGSIZE) {
-        kfree(p);
-    }
+// Free the page of physical memory pointed at by pa,
+// which normally should have been returned by a
+// call to kalloc().  (The exception is when
+// initializing the allocator; see kinit above.)
+void
+kfree(void *pa)
+{
+  struct run *r;
+
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("kfree");
+
+  // Fill with junk to catch dangling refs.
+  memset(pa, 1, PGSIZE);
+
+  r = (struct run*)pa;
+
+  acquire(&kmem.lock);
+  r->next = kmem.freelist;
+  kmem.freelist = r;
+  release(&kmem.lock);
 }
 
+// Allocate one 4096-byte page of physical memory.
+// Returns a pointer that the kernel can use.
+// Returns 0 if the memory cannot be allocated.
+void *
+kalloc(void)
+{
+  struct run *r;
+
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+  if(r)
+    kmem.freelist = r->next;
+  release(&kmem.lock);
+
+  if(r)
+    memset((char*)r, 5, PGSIZE); // fill with junk
+  return (void*)r;
+}

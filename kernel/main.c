@@ -1,80 +1,45 @@
 #include "types.h"
+#include "param.h"
 #include "memlayout.h"
 #include "riscv.h"
 #include "defs.h"
 
-// 全局变量用于中断计数（需在中断处理函数中访问）
-volatile int timer_interrupt_count = 0;
-//volatile int timer_done = 0;
-// 声明测试函数
-void test_timer_interrupt(void);
-void trapinithart(void); 
+volatile static int started = 0;
 
-void main() {
-    // 初始化陷阱处理（设置中断向量）
-    trapinithart();
-    
-    // 启动中断测试
-    test_timer_interrupt();
+// start() jumps here in supervisor mode on all CPUs.
+void
+main()
+{
+  if(cpuid() == 0){
+    consoleinit();
+    printfinit();
+    printf("\n");
+    printf("xv6 kernel is booting\n");
+    printf("\n");
+    kinit();         // physical page allocator
+    kvminit();       // create kernel page table
+    kvminithart();   // turn on paging
+    procinit();      // process table
+    trapinit();      // trap vectors
+    trapinithart();  // install kernel trap vector
+    plicinit();      // set up interrupt controller
+    plicinithart();  // ask PLIC for device interrupts
+    binit();         // buffer cache
+    iinit();         // inode table
+    fileinit();      // file table
+    virtio_disk_init(); // emulated hard disk
+    userinit();      // first user process
+    __sync_synchronize();
+    started = 1;
+  } else {
+    while(started == 0)
+      ;
+    __sync_synchronize();
+    printf("hart %d starting\n", cpuid());
+    kvminithart();    // turn on paging
+    trapinithart();   // install kernel trap vector
+    plicinithart();   // ask PLIC for device interrupts
+  }
 
-    // 启动异常测试
-    test_exception_handling(); 
-
-    // 测试完成后进入循环
-    printf("All tests completed. Entering idle loop.\n");
-    while (1) {
-        // 等待中断
-        w_sstatus(r_sstatus() | SSTATUS_SIE);  // 确保中断使能
-        asm volatile("wfi");  // 等待中断指令，降低CPU占用
-    }
-}
-
-void test_timer_interrupt(void) {
-    printf("Starting timer interrupt test...\n");
-
-    // 1. 开启 M 模式的全局中断
-//    w_mstatus(r_mstatus() | MSTATUS_MIE);
-
-    // 2. 委托 S 模式定时器中断到 S 模式
-//    w_mideleg(r_mideleg() | (1UL << 5));  // STIE
-
-    // 3. 开启 S 模式的定时器中断和全局中断
-    w_sie(r_sie() | SIE_STIE);
-    w_sstatus(r_sstatus() | SSTATUS_SIE);
-
-    // 4. 设置第一次定时器中断
-    uint64 now = r_time();
-    w_stimecmp(now + 1000000);  // 1M 周期后触发
-
-    // 5. 重置计数
-    timer_interrupt_count = 0;
-
-    // 6. 等待中断
-    // 等待10次中断完成（循环等待标志位）
-    while(timer_interrupt_count<10);
-
-    // 7. 记录时间
-    uint64 end_time = r_time();
-    uint64 total_cycles = end_time - now;
-    uint64 avg_cycles = total_cycles/10;
-
-    printf("=== Timer interrupt test completed ===\n");
-    printf("Total interrupts: %d\n", timer_interrupt_count);
-    printf("Total cycles: %lu\n", total_cycles);
-    printf("Average interval: %lu cycles\n", avg_cycles);
-    printf("Expected: ~1000000 cycles\n");
-}
-
-void test_exception_handling(void) {
-    printf("Testing exception handling...\n");
-
-    printf("Testing memory access fault...\n");
-    int *p = (int *)0xFFFFFFFF;  // 访问非法内存地址
-    *p = 42;  // 这将触发内存访问故障
-
-    printf("Testing illegal instruction...\n");
-    volatile char *invalid_instruction = (volatile char *)0x1000000000;  
-    *invalid_instruction = 0;  // 访问无效地址，触发非法内存访问，模拟非法指令异常
-
-    printf("Exception tests completed\n");
+  scheduler();        
 }
