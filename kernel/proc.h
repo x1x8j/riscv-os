@@ -26,8 +26,8 @@ struct cpu {
   int intena;               // push_off()之前中断是否启用
 };
 
-//extern struct cpu cpus[NCPU];  // 存储CPU的状态
-extern struct cpu cpu;
+extern struct cpu cpus[NCPU];  // 存储CPU的状态
+//extern struct cpu cpu;
 
 // 每个进程在trap处理代码中的数据。
 // 位于trampoline页下方的单独一页，
