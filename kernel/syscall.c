@@ -104,6 +104,8 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
+extern uint64 sys_dump_proc(void);
+
 
 // 一个数组，将系统调用号与相应的系统调用函数映射
 static uint64 (*syscalls[])(void) = {
@@ -128,6 +130,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_dump_proc]   sys_dump_proc,
 };
 
 // 系统调用的入口函数

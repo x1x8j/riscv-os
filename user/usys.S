@@ -105,3 +105,8 @@ uptime:
  li a7, SYS_uptime
  ecall
  ret
+.global dump_proc
+dump_proc:
+ li a7, SYS_dump_proc
+ ecall
+ ret

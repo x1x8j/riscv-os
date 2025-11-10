@@ -45,7 +45,7 @@ forktest(void)
 
   print("fork test\n");
   32:	00000517          	auipc	a0,0x0
-  36:	3e650513          	addi	a0,a0,998 # 418 <uptime+0xc>
+  36:	3ee50513          	addi	a0,a0,1006 # 420 <dump_proc+0xc>
   3a:	fc7ff0ef          	jal	ra,0 <print>
 
   for(n=0; n<N; n++){
@@ -67,7 +67,7 @@ forktest(void)
   if(n == N){
     print("fork claimed to work N times!\n");
   54:	00000517          	auipc	a0,0x0
-  58:	3d450513          	addi	a0,a0,980 # 428 <uptime+0x1c>
+  58:	3dc50513          	addi	a0,a0,988 # 430 <dump_proc+0x1c>
   5c:	fa5ff0ef          	jal	ra,0 <print>
     exit(1);
   60:	4505                	li	a0,1
@@ -104,7 +104,7 @@ forktest(void)
 
   print("fork test OK\n");
   90:	00000517          	auipc	a0,0x0
-  94:	3e850513          	addi	a0,a0,1000 # 478 <uptime+0x6c>
+  94:	3f050513          	addi	a0,a0,1008 # 480 <dump_proc+0x6c>
   98:	f69ff0ef          	jal	ra,0 <print>
 }
   9c:	60e2                	ld	ra,24(sp)
@@ -115,14 +115,14 @@ forktest(void)
   a6:	8082                	ret
       print("wait stopped early\n");
   a8:	00000517          	auipc	a0,0x0
-  ac:	3a050513          	addi	a0,a0,928 # 448 <uptime+0x3c>
+  ac:	3a850513          	addi	a0,a0,936 # 450 <dump_proc+0x3c>
   b0:	f51ff0ef          	jal	ra,0 <print>
       exit(1);
   b4:	4505                	li	a0,1
   b6:	2be000ef          	jal	ra,374 <exit>
     print("wait got too many\n");
   ba:	00000517          	auipc	a0,0x0
-  be:	3a650513          	addi	a0,a0,934 # 460 <uptime+0x54>
+  be:	3ae50513          	addi	a0,a0,942 # 468 <dump_proc+0x54>
   c2:	f3fff0ef          	jal	ra,0 <print>
     exit(1);
   c6:	4505                	li	a0,1
@@ -821,3 +821,13 @@ uptime:
  40e:	00000073          	ecall
  ret
  412:	8082                	ret
+
+0000000000000414 <dump_proc>:
+.global dump_proc
+dump_proc:
+ li a7, SYS_dump_proc
+ 414:	48d9                	li	a7,22
+ ecall
+ 416:	00000073          	ecall
+ ret
+ 41a:	8082                	ret

@@ -24,6 +24,14 @@ int getpid(void);
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);
+struct pstat {
+    int inuse;
+    int pid;
+    char name[16];
+    int state;
+};
+int dump_proc(struct pstat*);
+
 
 // ulib.c
 int stat(const char*, struct stat*);

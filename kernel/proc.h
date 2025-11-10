@@ -106,3 +106,10 @@ struct proc {
   char name[16];                // 进程名称（用于调试）
 };
 
+// 用于传递给用户空间的进程信息
+struct pstat {
+    int inuse;          // 1 表示该槽位被使用
+    int pid;
+    char name[16];      // 进程名（来自 proc->name）
+    int state;          // 进程状态（UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE）
+};

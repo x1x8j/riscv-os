@@ -45,4 +45,4 @@ entry("getpid");   # 获取进程ID
 entry("sbrk");     # 分配内存
 entry("pause");    # 暂停进程
 entry("uptime");   # 获取系统运行时间
-
+entry("dump_proc");

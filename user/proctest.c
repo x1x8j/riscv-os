@@ -8,6 +8,8 @@
 #define SCHED_WORKERS 4      // 明确指定调度器测试的 worker 数量
 #define MAX_TEST_PROC 8      // 进程创建测试的最大尝试数
 
+void debug_proc_table(void);
+
 // 忙等待模拟 sleep（单位：时钟滴答）
 void delay(int ticks) {
     int start = uptime();
@@ -43,6 +45,7 @@ void itoa(int n, char *buf) {
 // ==========================
 void simple_task(void) {
     printf("Simple task running\n");
+//    debug_proc_table();
     exit(0);
 }
 
@@ -87,12 +90,30 @@ void consumer_task(int read_fd) {
 // ==========================
 // 5. 调试进程表（模拟输出）
 // ==========================
+
 void debug_proc_table(void) {
-    printf("=== Process Table Debug (simulated) ===\n");
-    printf("PID | State | Name\n");
-    printf("1   | RUN   | init\n");
-    printf("2   | SLEEP | sh\n");
-    printf("... (actual table not accessible from user space)\n");
+    printf("\n=== Real Process Table ===\n");
+    printf("PID\tSTATE\tNAME\n");
+
+    struct pstat stats[NPROC];
+    if (dump_proc(stats) < 0) {
+        printf("Failed to get process table\n");
+        return;
+    }
+
+    for (int i = 0; i < NPROC; i++) {
+        if (stats[i].inuse) {
+            char *state_str = "???";
+            switch (stats[i].state) {
+                case 0: state_str = "UNUSED"; break;
+                case 2: state_str = "SLEEPING"; break;
+                case 3: state_str = "RUNNABLE"; break;
+                case 4: state_str = "RUNNING"; break;
+                case 5: state_str = "ZOMBIE"; break;
+            }
+            printf("%d\t%s\t%s\n", stats[i].pid, state_str, stats[i].name);
+        }
+    }
 }
 
 // ==========================
@@ -220,14 +241,16 @@ void test_synchronization(void) {
 int main(int argc, char *argv[]) {
     printf("=== Starting xv6 Comprehensive Test Suite ===\n");
 
-    debug_proc_table();
+//    debug_proc_table();
     test_process_creation();
     test_scheduler();
     test_synchronization();
 
     // 单独测试简单任务
     if (fork() == 0) {
+        debug_proc_table();
         simple_task();
+//	printf("Simple task running (my PID = %d)\n", getpid());
     }
     wait((int *)0);
 
@@ -235,6 +258,10 @@ int main(int argc, char *argv[]) {
         cpu_intensive_task();
     }
     wait((int *)0);
+
+
+    debug_proc_table();
+
 
     printf("=== All tests completed ===\n");
     exit(0);

@@ -688,3 +688,31 @@ procdump(void)
     printf("\n");
   }
 }
+
+int
+sys_dump_proc(void)
+{
+    uint64 addr;
+    // 获取用户传入的指针地址（第0个参数）
+    argaddr(0, &addr);  // 注意：argaddr 是 void，不返回错误
+
+    if (addr == 0)
+        return -1;  // 无效地址
+
+    for (int i = 0; i < NPROC; i++) {
+        struct proc *p = &proc[i];  // ← 现在在 proc.c 中，proc[] 可见！
+        acquire(&p->lock);
+        struct pstat ps;
+        ps.inuse = (p->state != UNUSED);
+        ps.pid = p->pid;
+        ps.state = p->state;
+        safestrcpy(ps.name, p->name, sizeof(ps.name));
+        release(&p->lock);
+
+        // 安全拷贝到用户空间
+        if (copyout(myproc()->pagetable, addr + i * sizeof(ps), (char*)&ps, sizeof(ps)) < 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
