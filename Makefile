@@ -131,6 +131,7 @@ UPROGS=\
 	$U/_fstest\
 	$U/_proctest\
 	$U/_syscallstest\
+	$U/_test\
 
 
 fs.img: mkfs/mkfs README $(UPROGS)

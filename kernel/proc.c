@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -124,6 +125,9 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+
+  p->ticks = 0;
+  p->timeslice =5;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -428,6 +432,9 @@ scheduler(void)
   struct cpu *c = mycpu();
 
   c->proc = 0;
+
+//  static struct proc *last_scheduled = 0;  // 记住上次调度的位置
+
   for(;;){
     // The most recent process to run may have had interrupts
     // turned off; enable them to avoid a deadlock if all
@@ -437,13 +444,39 @@ scheduler(void)
     intr_on();
     intr_off();
 
+//    struct proc *start = last_scheduled ? last_scheduled : proc;
+//    p = start;
+//    do {
+      // 如果超出数组末尾，回绕到开头
+//      if (p >= &proc[NPROC])
+//        p = proc;
+//      acquire(&p->lock);
+//      if (p->state == RUNNABLE) {
+        // 找到可运行进程
+//        last_scheduled = p + 1;  // 下次从下一个开始
+//        if (last_scheduled >= &proc[NPROC])
+//          last_scheduled = proc;
+        // 切换到该进程
+//        p->state = RUNNING;
+//        c->proc = p;
+//        swtch(&c->context, &p->context);
+        // 返回后：当前进程已切换回来
+//        c->proc = 0;
+//        release(&p->lock);
+//        break;  // 跳出 do-while，重新开始调度循环
+//      }
+//      release(&p->lock);
+//      p++;
+//    } while (p != start);  // 扫描一圈都没找到就继续空转
+			   
+			   
     int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
+//        // Switch to chosen process.  It is the process's job
+//        // to release its lock and then reacquire it
+//        // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);

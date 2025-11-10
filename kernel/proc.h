@@ -104,6 +104,8 @@ struct proc {
   struct file *ofile[NOFILE];   // 打开的文件
   struct inode *cwd;            // 当前工作目录
   char name[16];                // 进程名称（用于调试）
+  int ticks;        // 已使用的 tick 数
+  int timeslice;    // 分配的时间片长度
 };
 
 // 用于传递给用户空间的进程信息
