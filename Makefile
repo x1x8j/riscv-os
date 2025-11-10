@@ -128,6 +128,9 @@ UPROGS=\
 	$U/_forktest\
 	$U/_init\
 	$U/_sh\
+	$U/_fstest\
+	$U/_proctest\
+	$U/_syscallstest\
 
 
 fs.img: mkfs/mkfs README $(UPROGS)
