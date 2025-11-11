@@ -117,128 +117,159 @@ sys_fstat(void)
   return filestat(f, st);  // 获取文件状态信息
 }
 
-// 创建新路径 new，作为指向与 old 相同 inode 的链接
+// 创建新路径 new，作为指向与 old 相同 inode 的另一个目录项（即硬链接）
 uint64
 sys_link(void)
 {
-  char name[DIRSIZ], new[MAXPATH], old[MAXPATH];
-  struct inode *dp, *ip;
+  char name[DIRSIZ];        // 存放 new 路径中的最后一级文件名（如 "b" in "/a/b"）
+  char new[MAXPATH], old[MAXPATH];  // 用户传入的两个路径字符串
 
+  // 从系统调用参数中获取 old 和 new 路径（参数0=old, 参数1=new）
   if(argstr(0, old, MAXPATH) < 0 || argstr(1, new, MAXPATH) < 0)
-    return -1;
+    return -1;  // 路径无效或太长
 
-  begin_op();
-  if((ip = namei(old)) == 0){  // 查找 old 路径对应的 inode
+  begin_op();  // 开始一个文件系统事务（用于日志一致性）
+
+  // 通过 old 路径查找其对应的 inode（增加引用计数）
+  if((ip = namei(old)) == 0){
+    end_op();
+    return -1;  // old 路径不存在
+  }
+
+  ilock(ip);  // 锁住该 inode，防止并发修改
+
+  // 硬链接不能用于目录（避免目录环路，简化文件系统）
+  if(ip->type == T_DIR){
+    iunlockput(ip);  // 解锁并减少引用计数
     end_op();
     return -1;
   }
 
-  ilock(ip);
-  if(ip->type == T_DIR){  // 如果是目录，不能创建链接
-    iunlockput(ip);
-    end_op();
-    return -1;
+  // 先增加链接计数（nlink），后续若失败再回滚
+  ip->nlink++;
+  iupdate(ip);   // 将修改写回磁盘（inode 块）
+  iunlock(ip);   // 解锁 inode（但仍持有引用）
+
+  // 解析 new 路径：得到其父目录 dp 和文件名 name
+  if((dp = nameiparent(new, name)) == 0)
+    goto bad;  // new 路径无效或父目录不存在
+
+  ilock(dp);  // 锁住父目录 inode
+
+  // 检查是否在同一设备上（xv6 不支持跨设备硬链接）
+  // 并尝试在父目录中添加新目录项：name -> ip->inum
+  if(dp->dev != ip->dev || dirlink(dp, name, ip->inum) < 0){
+    iunlockput(dp);  // 添加失败，释放父目录
+    goto bad;
   }
 
-  ip->nlink++;  // 增加链接计数
-  iupdate(ip);
-  iunlock(ip);
+  iunlockput(dp);  // 成功添加，解锁并释放父目录引用
+  iput(ip);        // 释放最初由 namei 获取的 ip 引用
 
-  if((dp = nameiparent(new, name)) == 0)  // 获取 new 路径的父目录
-    goto bad;
-  ilock(dp);
-  if(dp->dev != ip->dev || dirlink(dp, name, ip->inum) < 0){  // 在父目录中创建新链接
-    iunlockput(dp);
-    goto bad;
-  }
-  iunlockput(dp);
-  iput(ip);
-
-  end_op();
-
-  return 0;
+  end_op();        // 提交事务
+  return 0;        // 成功
 
 bad:
+  //  发生错误：回滚之前增加的 nlink
   ilock(ip);
-  ip->nlink--;  // 发生错误，恢复链接计数
+  ip->nlink--;     // 恢复原链接数
   iupdate(ip);
-  iunlockput(ip);
+  iunlockput(ip);  // 解锁并释放引用
   end_op();
   return -1;
 }
 
-// 判断目录 dp 是否为空，除了 "." 和 ".." 外没有其他内容
+// 判断目录 dp 是否为空（除了 "." 和 ".." 外没有其他有效目录项）
 static int
 isdirempty(struct inode *dp)
 {
   int off;
-  struct dirent de;
+  struct dirent de;  // 目录项结构：{ inum, name[DIRSIZ] }
 
-  for(off=2*sizeof(de); off<dp->size; off+=sizeof(de)){  // 跳过 "." 和 ".."
+  // 从偏移 2*sizeof(de) 开始扫描（跳过前两项："." 和 ".."）
+  for(off = 2 * sizeof(de); off < dp->size; off += sizeof(de)){
+    // 从目录 inode 中读取一个目录项到 de
     if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
-      panic("isdirempty: readi");
-    if(de.inum != 0)  // 如果目录项不为空
-      return 0;
+      panic("isdirempty: readi");  // 读取出错
+
+    // 如果该目录项的 inum != 0，说明是一个有效文件/目录
+    if(de.inum != 0)
+      return 0;  // 非空
   }
-  return 1;  // 目录为空
+  return 1;  // 所有后续项 inum==0，目录为空
 }
 
 uint64
 sys_unlink(void)
 {
-  struct inode *ip, *dp;
+  struct inode *ip, *dp;  // ip: 要删除的文件；dp: 其父目录
   struct dirent de;
   char name[DIRSIZ], path[MAXPATH];
-  uint off;
+  uint off;  // 在父目录中找到该文件的偏移位置
 
-  if(argstr(0, path, MAXPATH) < 0)  // 获取路径
+  // 获取用户传入的路径
+  if(argstr(0, path, MAXPATH) < 0)
     return -1;
 
   begin_op();
-  if((dp = nameiparent(path, name)) == 0){  // 查找路径的父目录
+
+  // 解析路径：得到父目录 dp 和文件名 name
+  if((dp = nameiparent(path, name)) == 0){
     end_op();
     return -1;
   }
 
-  ilock(dp);
+  ilock(dp);  // 锁住父目录
 
-  // 不能删除 "." 或 ".."。
+  // 不能删除 "." 或 ".."（防止破坏目录结构）
   if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
     goto bad;
 
-  if((ip = dirlookup(dp, name, &off)) == 0)  // 查找目录项
-    goto bad;
-  ilock(ip);
+  // 在父目录中查找 name 对应的 inode，并返回其偏移 off
+  if((ip = dirlookup(dp, name, &off)) == 0)
+    goto bad;  // 文件不存在
 
+  ilock(ip);  // 锁住目标 inode
+
+  // 安全检查：nlink 不应小于 1
   if(ip->nlink < 1)
-    panic("unlink: nlink < 1");  // 检查链接计数
-  if(ip->type == T_DIR && !isdirempty(ip)){  // 如果是非空目录，不能删除
-    iunlockput(ip);
+    panic("unlink: nlink < 1");
+
+  // 如果是目录，必须为空才能删除
+  if(ip->type == T_DIR && !isdirempty(ip)){
+    iunlockput(ip);  // 解锁并释放 ip
     goto bad;
   }
 
-  memset(&de, 0, sizeof(de));  // 清空目录项
-  if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))  // 删除目录项
-    panic("unlink: writei");
-  if(ip->type == T_DIR){
-    dp->nlink--;  // 更新父目录的链接计数
-    iupdate(dp);
-  }
-  iunlockput(dp);
+  // ✅ 删除目录项：将对应位置的 dirent 清零（inum=0）
+  memset(&de, 0, sizeof(de));
+  if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+    panic("unlink: writei");  // 写入失败
 
-  ip->nlink--;  // 更新目标文件的链接计数
+  // 如果删除的是目录，则父目录的链接数减 1
+  // （因为子目录中的 ".." 指向父目录，现在这个子目录没了）
+  if(ip->type == T_DIR){
+    dp->nlink--;
+    iupdate(dp);  // 更新父目录 inode
+  }
+  iunlockput(dp);  // 解锁并释放父目录
+
+  // 目标文件的链接数减 1
+  ip->nlink--;
   iupdate(ip);
+
+  // 如果 nlink 变为 0 且无进程打开它，inode 和数据块会被回收（在 iput 中处理）
   iunlockput(ip);
 
   end_op();
-
   return 0;
 
 bad:
-  iunlockput(dp);
+  iunlockput(dp);  // 出错时只释放父目录（ip 未被锁定或已处理）
   end_op();
   return -1;
 }
+
 
 static struct inode*
 create(char *path, short type, short major, short minor)
