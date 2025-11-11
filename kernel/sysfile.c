@@ -241,7 +241,7 @@ sys_unlink(void)
     goto bad;
   }
 
-  // ✅ 删除目录项：将对应位置的 dirent 清零（inum=0）
+  // 删除目录项：将对应位置的 dirent 清零（inum=0）
   memset(&de, 0, sizeof(de));
   if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
     panic("unlink: writei");  // 写入失败
