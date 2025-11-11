@@ -441,38 +441,42 @@ scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
 
-  c->proc = 0; // 当前 CPU 没有运行任何进程
+  c->proc = 0;
+
+  static struct proc *last_scheduled = 0;  // 记住上次调度的位置
 
   for(;;){
-    // 最近运行的进程可能关闭了中断；
-    // 临时开启中断以避免所有进程都在等待时死锁，
-    // 然后立即关闭以避免中断与 wfi 之间的竞态。
+
     intr_on();
     intr_off();
 
-    int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
+    struct proc *start = last_scheduled ? last_scheduled : proc;
+    p = start;
+    do {
+      // 如果超出数组末尾，回绕到开头
+      if (p >= &proc[NPROC])
+        p = proc;
       acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // 切换到选中的进程
+      if (p->state == RUNNABLE) {
+        // 找到可运行进程
+        last_scheduled = p + 1;  // 下次从下一个开始
+        if (last_scheduled >= &proc[NPROC])
+          last_scheduled = proc;
+        // 切换到该进程
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
-
-        // 进程暂时运行结束。
-        // 它应在返回前更改自己的 p->state。
+        // 返回后：当前进程已切换回来
         c->proc = 0;
-        found = 1;
+        release(&p->lock);
+        break;  // 跳出 do-while，重新开始调度循环
       }
       release(&p->lock);
-    }
-    if(found == 0) {
-      // 没有可运行的进程；在此核心上暂停，直到发生中断。
-      asm volatile("wfi"); // Wait for Interrupt
-    }
+      p++;
+    } while (p != start);  // 扫描一圈都没找到就继续空转
+
   }
 }
-
 // 切换到调度器。调用时必须只持有 p->lock，
 // 并且已经更改了 proc->state。
 // 保存和恢复 intena，因为 intena 是当前内核线程的属性，
