@@ -271,27 +271,32 @@ bad:
 }
 
 
+// 创建指定路径的 inode（用于 open(O_CREATE)、mkdir、mknod）
 static struct inode*
 create(char *path, short type, short major, short minor)
 {
-  struct inode *ip, *dp;
+  struct inode *ip, *dp;  // ip: 新 inode；dp: 父目录
   char name[DIRSIZ];
 
-  if((dp = nameiparent(path, name)) == 0)  // 查找父目录
+  // 解析路径：获取父目录 dp 和最后一级文件名 name
+  if((dp = nameiparent(path, name)) == 0)
     return 0;
 
-  ilock(dp);
+  ilock(dp);  // 锁住父目录
 
-  if((ip = dirlookup(dp, name, 0)) != 0){  // 检查文件是否已存在
+  // 检查是否已存在同名文件
+  if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
     ilock(ip);
+    // 若是普通文件创建，且已存在普通文件或设备，则复用（用于 open(O_CREATE)）
     if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
       return ip;
     iunlockput(ip);
-    return 0;
+    return 0;  // 其他情况视为冲突
   }
 
-  if((ip = ialloc(dp->dev, type)) == 0){  // 分配 inode
+  // 分配新 inode
+  if((ip = ialloc(dp->dev, type)) == 0){
     iunlockput(dp);
     return 0;
   }
@@ -302,24 +307,27 @@ create(char *path, short type, short major, short minor)
   ip->nlink = 1;
   iupdate(ip);
 
-  if(type == T_DIR){  // 创建 . 和 .. 目录项
+  // 若为目录，创建 "." 和 ".."
+  if(type == T_DIR){
     if(dirlink(ip, ".", ip->inum) < 0 || dirlink(ip, "..", dp->inum) < 0)
       goto fail;
   }
 
+  // 在父目录中添加新目录项
   if(dirlink(dp, name, ip->inum) < 0)
     goto fail;
 
+  // 若为目录，父目录链接数 +1（因 ".." 指向它）
   if(type == T_DIR){
-    dp->nlink++;  // 更新父目录的链接计数
+    dp->nlink++;
     iupdate(dp);
   }
 
   iunlockput(dp);
+  return ip;  // 成功返回新 inode（调用者需负责释放）
 
-  return ip;
-
- fail:
+fail:
+  // 失败：标记 inode 为未使用（nlink=0），便于回收
   ip->nlink = 0;
   iupdate(ip);
   iunlockput(ip);
@@ -336,65 +344,74 @@ sys_open(void)
   struct inode *ip;
   int n;
 
-  argint(1, &omode);  // 获取打开文件的模式
-  if((n = argstr(0, path, MAXPATH)) < 0)  // 获取路径
+  // 获取第二个参数：打开模式（如 O_RDONLY, O_WRONLY, O_CREATE, O_TRUNC）
+  argint(1, &omode);
+  // 获取第一个参数：文件路径
+  if((n = argstr(0, path, MAXPATH)) < 0)
     return -1;
 
-  begin_op();
+  begin_op();  // 开始文件系统事务
 
-  if(omode & O_CREATE){  // 如果是创建文件
+  if(omode & O_CREATE){
+    // 创建新文件（类型为普通文件，设备号为0）
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
       end_op();
       return -1;
     }
-  } else {  // 如果是打开已有文件
+  } else {
+    // 打开已有文件
     if((ip = namei(path)) == 0){
       end_op();
       return -1;
     }
     ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){  // 不能用非读模式打开目录
+    // 目录只能以只读方式打开（不能写入目录内容）
+    if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
       return -1;
     }
   }
 
+  // 检查设备文件合法性
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();
     return -1;
   }
 
-  if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){  // 分配文件描述符
-    if(f)
-      fileclose(f);
+  // 分配内核 file 结构和进程文件描述符
+  if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+    if(f) fileclose(f);  // 清理资源
     iunlockput(ip);
     end_op();
     return -1;
   }
 
+  // 设置 file 结构
   if(ip->type == T_DEVICE){
     f->type = FD_DEVICE;
     f->major = ip->major;
   } else {
     f->type = FD_INODE;
-    f->off = 0;
+    f->off = 0;  // 初始偏移为0
   }
   f->ip = ip;
-  f->readable = !(omode & O_WRONLY);
+  f->readable = !(omode & O_WRONLY);           // 非仅写即为可读
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
 
-  if((omode & O_TRUNC) && ip->type == T_FILE){  // 如果是 O_TRUNC 模式，截断文件
-    itrunc(ip);
+  // 若指定了 O_TRUNC 且是普通文件，则清空内容
+  if((omode & O_TRUNC) && ip->type == T_FILE){
+    itrunc(ip);  // 释放所有数据块，size=0
   }
 
-  iunlock(ip);
+  iunlock(ip);  // 此时 file 已持有 ip 引用，无需再锁
   end_op();
 
-  return fd;
+  return fd;  // 返回用户态文件描述符
 }
+
 
 uint64
 sys_mkdir(void)
@@ -403,10 +420,12 @@ sys_mkdir(void)
   struct inode *ip;
 
   begin_op();
+  // 从用户获取路径，并调用 create 创建类型为 T_DIR 的 inode
   if(argstr(0, path, MAXPATH) < 0 || (ip = create(path, T_DIR, 0, 0)) == 0){
     end_op();
     return -1;
   }
+  // 成功创建后，释放对 inode 的引用（create 返回时已锁定）
   iunlockput(ip);
   end_op();
   return 0;
@@ -420,8 +439,10 @@ sys_mknod(void)
   int major, minor;
 
   begin_op();
+  // 获取设备主/次设备号
   argint(1, &major);
   argint(2, &minor);
+  // 创建类型为 T_DEVICE 的 inode
   if((argstr(0, path, MAXPATH)) < 0 ||
      (ip = create(path, T_DEVICE, major, minor)) == 0){
     end_op();
@@ -437,64 +458,79 @@ sys_chdir(void)
 {
   char path[MAXPATH];
   struct inode *ip;
-  struct proc *p = myproc();
-  
+  struct proc *p = myproc();  // 获取当前进程
+
   begin_op();
+  // 查找目标路径的 inode
   if(argstr(0, path, MAXPATH) < 0 || (ip = namei(path)) == 0){
     end_op();
     return -1;
   }
   ilock(ip);
-  if(ip->type != T_DIR){  // 必须是目录类型
+  // 必须是目录
+  if(ip->type != T_DIR){
     iunlockput(ip);
     end_op();
     return -1;
   }
-  iunlock(ip);
-  iput(p->cwd);  // 释放当前工作目录
+  iunlock(ip);  // 不需要一直锁住
+
+  // 释放旧的工作目录（减少引用计数）
+  iput(p->cwd);
   end_op();
-  p->cwd = ip;  // 更新为新的工作目录
+
+  // 更新为新的工作目录（create/namei 返回的 ip 已有引用）
+  p->cwd = ip;
   return 0;
 }
 
 uint64
 sys_exec(void)
 {
-  char path[MAXPATH], *argv[MAXARG];
+  char path[MAXPATH], *argv[MAXARG];  // argv 缓存内核空间指针
   int i;
-  uint64 uargv, uarg;
+  uint64 uargv, uarg;  // 用户空间地址
 
-  argaddr(1, &uargv);  // 获取参数地址
-  if(argstr(0, path, MAXPATH) < 0) {  // 获取程序路径
+  // 获取用户传入的 argv 数组地址（第二个参数）
+  argaddr(1, &uargv);
+  // 获取程序路径（第一个参数）
+  if(argstr(0, path, MAXPATH) < 0) {
     return -1;
   }
+
   memset(argv, 0, sizeof(argv));
-  for(i=0;; i++){
-    if(i >= NELEM(argv)){
+
+  // 从用户空间逐个拷贝命令行参数到内核
+  for(i = 0; ; i++){
+    if(i >= NELEM(argv))  // 超过最大参数数量
       goto bad;
-    }
-    if(fetchaddr(uargv+sizeof(uint64)*i, (uint64*)&uarg) < 0){
+    // 读取 argv[i] 的用户地址（即字符串指针）
+    if(fetchaddr(uargv + sizeof(uint64)*i, (uint64*)&uarg) < 0)
       goto bad;
-    }
-    if(uarg == 0){
+    if(uarg == 0){  // 遇到 NULL 表示结束
       argv[i] = 0;
       break;
     }
+    // 为每个参数分配内核内存
     argv[i] = kalloc();
     if(argv[i] == 0)
       goto bad;
+    // 从用户空间拷贝字符串内容（最多一页）
     if(fetchstr(uarg, argv[i], PGSIZE) < 0)
       goto bad;
   }
 
-  int ret = kexec(path, argv);  // 执行程序
+  // 调用 kexec 加载 ELF 并替换当前进程内存
+  int ret = kexec(path, argv);
 
+  // 无论成功与否，都要释放内核分配的参数内存
   for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
     kfree(argv[i]);
 
-  return ret;
+  return ret;  // 成功返回0，失败返回-1
 
- bad:
+bad:
+  // 出错时清理已分配的内存
   for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
     kfree(argv[i]);
   return -1;
@@ -503,30 +539,38 @@ sys_exec(void)
 uint64
 sys_pipe(void)
 {
-  uint64 fdarray; // 用户指针指向两个整数的数组
-  struct file *rf, *wf;
+  uint64 fdarray;  // 用户传入的 int[2] 数组地址
+  struct file *rf, *wf;  // 读端和写端的 file 结构
   int fd0, fd1;
   struct proc *p = myproc();
 
-  argaddr(0, &fdarray);  // 获取文件描述符数组地址
-  if(pipealloc(&rf, &wf) < 0)  // 分配管道文件
+  // 获取用户数组地址
+  argaddr(0, &fdarray);
+  // 分配管道的两个 file 结构（共享一个 pipe 结构）
+  if(pipealloc(&rf, &wf) < 0)
     return -1;
+
   fd0 = -1;
-  if((fd0 = fdalloc(rf)) < 0 || (fd1 = fdalloc(wf)) < 0){  // 分配文件描述符
+  // 为读端和写端分别分配文件描述符
+  if((fd0 = fdalloc(rf)) < 0 || (fd1 = fdalloc(wf)) < 0){
+    // 分配失败：回滚
     if(fd0 >= 0)
-      p->ofile[fd0] = 0;
+      p->ofile[fd0] = 0;  // 清除已分配的 fd
     fileclose(rf);
     fileclose(wf);
     return -1;
   }
-  if(copyout(p->pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||  // 将文件描述符写入用户空间
-     copyout(p->pagetable, fdarray+sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){
+
+  // 将两个 fd 写回用户空间的 fdarray[0] 和 fdarray[1]
+  if(copyout(p->pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||
+     copyout(p->pagetable, fdarray + sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){
+    // 写回失败：清理
     p->ofile[fd0] = 0;
     p->ofile[fd1] = 0;
     fileclose(rf);
     fileclose(wf);
     return -1;
   }
-  return 0;
-}
 
+  return 0;  // 成功
+}
