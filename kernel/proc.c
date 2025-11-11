@@ -669,35 +669,6 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
   }
 }
 
-// 向控制台打印进程列表，用于调试。
-// 当用户在控制台按下 ^P 时调用。
-// 不加锁以避免卡死的机器进一步阻塞。
-void
-procdump(void)
-{
-  static char *states[] = {
-  [UNUSED]    "unused",
-  [USED]      "used",
-  [SLEEPING]  "sleep ",
-  [RUNNABLE]  "runble",
-  [RUNNING]   "run   ",
-  [ZOMBIE]    "zombie"
-  };
-  struct proc *p;
-  char *state;
-
-  printf("\n");
-  for(p = proc; p < &proc[NPROC]; p++){
-    if(p->state == UNUSED)
-      continue;
-    if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
-      state = states[p->state];
-    else
-      state = "???";
-    printf("%d %s %s", p->pid, state, p->name);
-    printf("\n");
-  }
-}
 
 // 系统调用：dump_proc —— 将所有进程信息拷贝到用户提供的缓冲区。
 int
