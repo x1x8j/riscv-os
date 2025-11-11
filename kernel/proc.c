@@ -132,7 +132,7 @@ found:
   p->state = USED;         // 标记为已使用
 
   p->ticks = 0;            // 已运行的时钟滴答数
-  p->timeslice = 5;        // 时间片长度（假设用于调度）
+  p->timeslice = 5;        // 时间片长度（用于调度）
 
   // 为 trapframe 分配一页内存
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
