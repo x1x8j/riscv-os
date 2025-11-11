@@ -3,7 +3,7 @@ struct context {
   uint64 ra;  // 返回地址
   uint64 sp;  // 堆栈指针
 
-  // 调用者保存的寄存器
+  // 被调用者保存的寄存器
   uint64 s0;
   uint64 s1;
   uint64 s2;
