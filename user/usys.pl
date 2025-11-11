@@ -19,7 +19,7 @@ sub entry {
     }
     # 设置系统调用号
     print " li a7, SYS_${name}\n";   # 将系统调用号加载到 a7 寄存器
-    print " ecall\n";                 # 执行系统调用
+    print " ecall\n";                 # 执行系统调用 ecall是RISC-V中用来触发从用户态到内核态陷阱的指令
     print " ret\n";                   # 返回
 }
 	
