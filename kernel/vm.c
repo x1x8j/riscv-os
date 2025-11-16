@@ -356,23 +356,13 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
   pte_t *pte;
-
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    if(va0 >= MAXVA)
+    if(va0 >= MAXVA){
+      //printf("copyout(): va is greater than MAXVA\n");
       return -1;
-  
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0) {
-      if((pa0 = vmfault(pagetable, va0, 0)) == 0) {
-        return -1;
-      }
     }
-
     pte = walk(pagetable, va0, 0);
-    // forbid copyout over read-only user text pages.
-//    if((*pte & PTE_W) == 0)
-//      return -1;
     if(*pte & PTE_COW){
       //printf("copyout(): got page COW faults at %p\n", va0);
       char *mem;
@@ -396,7 +386,10 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
         }
         kfree((void*) pa);
       }
-    }    
+    }
+    pa0 = walkaddr(pagetable, va0);
+    if(pa0 == 0)
+      return -1;
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
