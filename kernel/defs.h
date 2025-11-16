@@ -184,3 +184,7 @@ void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+void            addref(char*, void *);
+void            subref(char*, void *);
+int             getref(void*);

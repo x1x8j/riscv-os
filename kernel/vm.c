@@ -162,7 +162,8 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
-    if(*pte & PTE_V)
+//    if(*pte & PTE_V)
+    if((*pte & PTE_COW) == 0 &&  *pte & PTE_V)
       panic("mappages: remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
@@ -299,27 +300,38 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  /** char *mem; */
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      continue;   // page table entry hasn't been allocated
+      panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
-      continue;   // physical page hasn't been allocated
+      panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    /** 将Parent和Child的PTE权限均改为不可写，且均为COW Page  */
+    *pte = (*pte & ~PTE_W) | PTE_COW;
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    /** 
+     * 不重新分配物理内存，指向pa即可
+     * flags = PTE_FLAGS(*pte);
+     * if((mem = kalloc()) == 0)
+     * goto err;
+     * memmove(mem, (char*)pa, PGSIZE); */
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+      /** kfree(mem); */
+      printf("uvmcopy():can not map page\n");
       goto err;
     }
+    addref("uvmcopy()",(void*)pa);
+    /** True  */
+    /* printf("origin shoot: %p, new shoot: %p\n", walkaddr(old, i), walkaddr(new, i));
+    printf("origin perm: %x, new perm %x \n", PTE_FLAGS(*walk(old,i,0)), PTE_FLAGS(*walk(new,i,0)));
+    printf("origin perm & PTE_COW: %d, new perm & PTE_COW %d \n", PTE_FLAGS(*walk(old,i,0)) & PTE_COW, PTE_FLAGS(*walk(new,i,0)) & PTE_COW); */
   }
   return 0;
 
  err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
+  uvmunmap(new, 0, i, 1);
   return -1;
 }
 
@@ -359,9 +371,32 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
     pte = walk(pagetable, va0, 0);
     // forbid copyout over read-only user text pages.
-    if((*pte & PTE_W) == 0)
-      return -1;
-      
+//    if((*pte & PTE_W) == 0)
+//      return -1;
+    if(*pte & PTE_COW){
+      //printf("copyout(): got page COW faults at %p\n", va0);
+      char *mem;
+      if((mem = kalloc()) == 0)
+      {
+        printf("copyout(): memery alloc fault\n");
+        return -1;
+      }
+      memset(mem, 0, sizeof(mem));
+      uint64 pa = walkaddr(pagetable, va0);
+      if(pa){
+        memmove(mem, (char*)pa, PGSIZE);
+        int perm = PTE_FLAGS(*pte);
+        perm |= PTE_W;
+        perm &= ~PTE_COW;
+        //*pte = (PA2PTE(pa) | PTE_W) & !PTE_COW;
+        if(mappages(pagetable, va0, PGSIZE, (uint64)mem, perm) != 0){
+          printf("copyout(): can not map page\n");
+          kfree(mem); 
+          return -1;
+        }
+        kfree((void*) pa);
+      }
+    }    
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
