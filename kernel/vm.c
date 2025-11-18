@@ -376,10 +376,6 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
         return -1;
       }
 
-      // ⚠️ 注意：sizeof(mem) 是指针大小（8 字节），应改为 PGSIZE！
-      // 正确做法：不需要清零，因为下面会 memmove 覆盖
-      // memset(mem, 0, PGSIZE); // 可选
-
       uint64 pa = walkaddr(pagetable, va0);
       if (pa) {
         memmove(mem, (char*)pa, PGSIZE); // 复制原页内容
