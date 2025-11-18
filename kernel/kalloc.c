@@ -54,15 +54,14 @@ getref(void *pa) {
     return reference[getrefindex(pa)];
 }
 
-// 增加物理页 pa 的引用计数（tip 用于调试日志标识调用位置）
+// 增加物理页 pa 的引用计数
 void
 addref(char *tip, void *pa) {
     reference[getrefindex(pa)]++; // 引用计数加 1
-    // 可选调试输出：
     // printf("%s: addref: %d, pa: %p \n", tip, reference[getrefindex(pa)], pa);
 }
 
-// 减少物理页 pa 的引用计数（tip 用于调试日志）
+// 减少物理页 pa 的引用计数
 void
 subref(char *tip, void *pa) {
     int index = getrefindex(pa);
@@ -70,7 +69,6 @@ subref(char *tip, void *pa) {
     if (reference[index] == 0)
         return;
     reference[index]--; // 引用计数减 1
-    // 可选调试输出：
     // printf("%s: subref: %d, pa: %p \n", tip, reference[index], pa);
 }
 
@@ -94,7 +92,7 @@ freerange(void *pa_start, void *pa_end) {
 
     // 遍历每一页
     for (; p + PGSIZE <= (char*)pa_end; p += PGSIZE) {
-        // 初始化该页的引用计数为 0（尚未被任何虚拟地址引用）
+        // 初始化该页的引用计数为 0
         reference[getrefindex(p)] = 0;
         // 调用 kfree 将该页加入空闲链表（此时 ref=0，会立即加入）
         kfree(p);
