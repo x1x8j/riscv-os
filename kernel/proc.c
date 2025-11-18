@@ -21,6 +21,12 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+struct queue run_queues[NQUEUES];
+int global_ticks = 0;
+
+void enqueue(struct proc *p);
+struct proc* dequeue(int prio);
+void boost_all(void);
 // helps ensure that wakeups of wait()ing
 // parents are not lost. helps obey the
 // memory model when using p->parent.
@@ -49,6 +55,13 @@ void
 procinit(void)
 {
   struct proc *p;
+ 
+  // 初始化多级队列
+  for (int i = 0; i < NQUEUES; i++) {
+    initlock(&run_queues[i].lock, "runqueue");
+    run_queues[i].head = 0;
+    run_queues[i].tail = 0;
+  }
   
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
@@ -129,6 +142,8 @@ found:
   p->ticks = 0;
   p->timeslice =5;
 
+  p->priority = 0;         // 新进程从最高优先级开始
+  p->ticks_in_queue = 0;
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -220,18 +235,23 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 }
 
 // Set up first user process.
+// 在 kernel/proc.c 开头添加：
+//extern int exec(char*, char**);
+
+// 替换 userinit():
 void
 userinit(void)
 {
   struct proc *p;
-
+ 
   p = allocproc();
   initproc = p;
-  
+
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
-
+  
+  enqueue(p);
   release(&p->lock);
 }
 
@@ -428,7 +448,6 @@ kwait(uint64 addr)
 void
 scheduler(void)
 {
-  struct proc *p;
   struct cpu *c = mycpu();
 
   c->proc = 0;
@@ -442,55 +461,27 @@ scheduler(void)
     // to avoid a possible race between an interrupt
     // and wfi.
     intr_on();
-    intr_off();
-
-//    struct proc *start = last_scheduled ? last_scheduled : proc;
-//    p = start;
-//    do {
-      // 如果超出数组末尾，回绕到开头
-//      if (p >= &proc[NPROC])
-//        p = proc;
-//      acquire(&p->lock);
-//      if (p->state == RUNNABLE) {
-        // 找到可运行进程
-//        last_scheduled = p + 1;  // 下次从下一个开始
-//        if (last_scheduled >= &proc[NPROC])
-//          last_scheduled = proc;
-        // 切换到该进程
-//        p->state = RUNNING;
-//        c->proc = p;
-//        swtch(&c->context, &p->context);
-        // 返回后：当前进程已切换回来
-//        c->proc = 0;
-//        release(&p->lock);
-//        break;  // 跳出 do-while，重新开始调度循环
-//      }
-//      release(&p->lock);
-//      p++;
-//    } while (p != start);  // 扫描一圈都没找到就继续空转
-			   
-			   
-    int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-//        // Switch to chosen process.  It is the process's job
-//        // to release its lock and then reacquire it
-//        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
-      }
-      release(&p->lock);
+    
+    
+    struct proc *p = 0;
+    // 从高优先级到低优先级扫描
+    for (int i = 0; i < NQUEUES; i++) {
+      p = dequeue(i);
+      if (p) break;
     }
-    if(found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
-      asm volatile("wfi");
+
+    if (p) {
+      acquire(&p->lock);
+      if (p->state != RUNNABLE) {
+        release(&p->lock);
+        continue;
+      }
+      intr_off();
+      p->state = RUNNING;
+      c->proc = p;
+      swtch(&c->context, &p->context);
+      c->proc = 0;
+      release(&p->lock);
     }
   }
 }
@@ -529,6 +520,9 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+  p->ticks_in_queue = 0;
+
+  enqueue(p);  // 加入当前 priority 队列
   sched();
   release(&p->lock);
 }
@@ -591,6 +585,7 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
+  p->ticks_in_queue = 0;
   sched();
 
   // Tidy up.
@@ -613,6 +608,7 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+	enqueue(p);
       }
       release(&p->lock);
     }
@@ -748,4 +744,55 @@ sys_dump_proc(void)
         }
     }
     return 0;
+}
+
+
+// 将进程 p 加入其当前 priority 对应的 runnable 队列
+void
+enqueue(struct proc *p)
+{
+  int prio = p->priority;
+  acquire(&run_queues[prio].lock);
+  p->next = 0;
+  if (run_queues[prio].tail == 0) {
+    run_queues[prio].head = p;
+  } else {
+    run_queues[prio].tail->next = p;
+  }
+  run_queues[prio].tail = p;
+  release(&run_queues[prio].lock);
+}
+
+// 从指定优先级队列头取出一个进程
+struct proc*
+dequeue(int prio)
+{
+  acquire(&run_queues[prio].lock);
+  struct proc *p = run_queues[prio].head;
+  if (p) {
+    run_queues[prio].head = p->next;
+    if (run_queues[prio].head == 0)
+      run_queues[prio].tail = 0;
+    p->next = 0;
+  }
+  release(&run_queues[prio].lock);
+  return p;
+}
+
+// 将所有进程提升到最高优先级（防止饥饿）
+void
+boost_all(void)
+{
+  for (struct proc *p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if (p->state != UNUSED) {
+      p->priority = 0;
+      p->ticks_in_queue = 0;
+      if (p->state == RUNNABLE) {
+        // 重新入队到最高优先级
+        enqueue(p);
+      }
+    }
+    release(&p->lock);
+  }
 }

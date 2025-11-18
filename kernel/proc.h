@@ -106,6 +106,9 @@ struct proc {
   char name[16];                // 进程名称（用于调试）
   int ticks;        // 已使用的 tick 数
   int timeslice;    // 分配的时间片长度
+  int priority;          // 当前优先级 (0 ~ NQUEUES-1)
+  int ticks_in_queue;    // 在当前队列已使用的 ticks 数
+  struct proc *next;           // 👈 用于 runnable 队列的链表指针
 };
 
 // 用于传递给用户空间的进程信息
@@ -115,3 +118,17 @@ struct pstat {
     char name[16];      // 进程名（来自 proc->name）
     int state;          // 进程状态（UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE）
 };
+
+
+#define NQUEUES 4
+#define BOOST_INTERVAL 100  // 每 100 ticks 提升所有进程
+
+struct queue {
+  struct spinlock lock;
+  struct proc *head;
+  struct proc *tail;
+};
+
+extern struct queue run_queues[NQUEUES];
+extern int global_ticks;  // 全局 tick 计数，用于 boost
+void boost_all(void);  

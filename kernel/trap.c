@@ -81,9 +81,22 @@ usertrap(void)
     kexit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2){
-//    printf("user");
-    yield();
+  if (which_dev == 2) {
+  global_ticks++;
+  struct proc *p = myproc();
+  if (p) {
+    p->ticks_in_queue++; 
+    // 只有连续占用 CPU 才降级
+    if (p->ticks_in_queue >= 4 && p->priority < NQUEUES - 1) {
+      p->priority++;
+      // 不重置 ticks_in_queue，继续累积
+    }
+    if (global_ticks % 100 == 0) {
+      boost_all();
+    }
+    yield(); // 抢占
+  }
+  wakeup(&ticks);
   }
 //  if(which_dev == 2) { // timer interrupt
 //    // 增加当前进程已用 tick 数
@@ -170,21 +183,34 @@ kerneltrap()
   // give up the CPU if this is a timer interrupt.
 //  if(which_dev == 2 && myproc() != 0)
 //    yield();
-  if(which_dev == 2&&myproc()!=0) { // timer interrupt
-    // 增加当前进程已用 tick 数
-//    printf("===============kernel===============");
-    struct proc *p = myproc();
-    acquire(&p->lock);
-    p->ticks++;
-    int need_yield = (p->ticks >= p->timeslice);
-    if (need_yield) {
-      p->ticks = 0; // 重置时间片计数器
-    }
-    release(&p->lock);
+  if (which_dev == 2) {
+    // 👇 和 usertrap() 中几乎相同的逻辑
+    global_ticks++;
 
-    if (need_yield) {
-      yield(); // 时间片用完，主动让出 CPU
+    struct proc *p = myproc();
+    if (p) {
+      p->ticks_in_queue++;
+
+      // 降级逻辑（可选：内核态是否应降级？通常不降级，但为简单可统一处理）
+      if (p->ticks_in_queue >= 4 && p->priority < NQUEUES - 1) {
+        p->priority++;
+        p->ticks_in_queue = 0;
+      }
+
+      // 定期 boost
+      if (global_ticks % BOOST_INTERVAL == 0) {
+        boost_all();
+      }
+
+      // ⚠️ 注意：在内核态不能直接 yield()！
+      // 因为当前持有锁（如 file lock, proc lock），直接切换会导致死锁。
+      // 所以通常只记录“需要调度”，返回用户态时再处理。
+      // 但在 xv6 教学系统中，很多实验简化处理：允许在 kerneltrap 中 yield。
+      // 如果你没遇到死锁，可以暂时保留：
+      yield();  // ← 小心！可能不安全，但 xv6 单核常这么干
     }
+
+    wakeup(&ticks);
   }
 
   // the yield() may have caused some traps to occur,
